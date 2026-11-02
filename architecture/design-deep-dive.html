@@ -1,0 +1,517 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dsh-superagent · 设计思路与处理流程深化</title>
+<style>
+:root{
+  color-scheme: light dark;
+  --font-size-base:14px;
+  --background:light-dark(#ffffff,#151515);
+  --foreground:light-dark(#1c1c1c,#ececec);
+  --card:light-dark(#ffffff,#1e1e1e);
+  --card-foreground:light-dark(#1c1c1c,#ececec);
+  --muted:light-dark(#f1f1f1,#262626);
+  --muted-foreground:light-dark(#5f5f5f,#9e9e9e);
+  --border:light-dark(#e2e2e2,#3c3c3c);
+  --input:light-dark(#e8e8e8,#333333);
+  --primary:light-dark(#232323,#ececec);
+  --primary-foreground:light-dark(#ffffff,#151515);
+  --destructive:light-dark(#c62828,#ef7b7b);
+  --ring:light-dark(#232323,#ececec);
+  --accent:var(--muted);
+  --viz-series-1:light-dark(#4f79a8,#7da2cb);
+  --viz-series-2:light-dark(#6f9a5f,#94bb84);
+  --viz-series-3:light-dark(#b3853f,#d3a968);
+  --viz-series-4:light-dark(#8477b5,#a89ed1);
+  --viz-series-5:light-dark(#bb5555,#dd8282);
+  --viz-series-6:light-dark(#439e96,#6fc4bc);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--background);color:var(--foreground);
+  font:400 var(--font-size-base)/1.55 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+  padding:28px 22px 64px;max-width:1120px;margin-inline:auto}
+h1{font-size:calc(var(--font-size-base) + 4px);font-weight:500;margin:0 0 6px}
+h2{font-size:calc(var(--font-size-base) + 2px);font-weight:500}
+h3{font-size:var(--font-size-base);font-weight:500}
+p{margin:.4em 0}
+code{font-family:ui-monospace,Consolas,"Cascadia Mono",monospace;font-size:.92em;
+  background:var(--muted);padding:1px 5px;border-radius:5px}
+pre code{display:block;padding:10px 12px;overflow:auto}
+a{color:var(--viz-series-1)}
+hr{border:none;border-top:1px solid var(--border)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+.viz-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:14px}
+.viz-row{display:flex;flex-wrap:wrap;align-items:center}
+.viz-badge{display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:999px;
+  padding:2px 10px;font-size:12px;color:var(--muted-foreground)}
+.viz-controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.nav{display:flex;flex-wrap:wrap;gap:6px}
+.nav-pills .nav-link{border:1px solid var(--border);background:none;border-radius:999px;padding:5px 14px;
+  color:var(--muted-foreground);font:inherit;cursor:pointer}
+.nav-pills .nav-link:hover{background:var(--muted)}
+.nav-pills .nav-link.active{background:var(--primary);color:var(--primary-foreground);border-color:transparent}
+[role=tabpanel]{padding-top:12px}
+.btn{border:1px solid var(--border);background:none;border-radius:9px;padding:5px 14px;color:var(--foreground);
+  font:inherit;cursor:pointer}
+.btn:hover{background:var(--muted)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn-primary{background:var(--primary);color:var(--primary-foreground);border-color:transparent}
+.btn-sm{padding:3px 10px;font-size:12px;border-radius:8px}
+.table{width:100%;border-collapse:collapse;font-size:var(--font-size-base)}
+.table th{text-align:left;font-weight:500;color:var(--muted-foreground);border-bottom:1px solid var(--border);padding:6px 10px}
+.table td{border-bottom:1px solid var(--border);padding:6px 10px;vertical-align:top}
+.table-sm th,.table-sm td{padding:4px 8px}
+.table-responsive{overflow-x:auto}
+.text-end{text-align:right}.text-center{text-align:center}.text-nowrap{white-space:nowrap}
+.text-small{font-size:12px}.text-muted{color:var(--muted-foreground)}
+.form-label{display:block;font-size:12px;color:var(--muted-foreground);margin-bottom:4px}
+.form-select,.form-control{font:inherit;background:var(--card);color:var(--foreground);
+  border:1px solid var(--border);border-radius:8px;padding:6px 10px}
+.form-select-sm{padding:3px 8px;font-size:12px}
+.cursor-interaction{cursor:pointer}
+.tabular-nums{font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<div id="v45deep">
+  <style>
+    #v45deep { font-size: var(--font-size-base); }
+    #v45deep h1 { margin-bottom: 4px; }
+    #v45deep .sub { color: var(--muted-foreground); margin-bottom: 10px; }
+    #v45deep h3 { margin-top: 18px; }
+    #v45deep svg text { font-family: inherit; }
+    #v45deep .svg-wrap { width: 100%; }
+    #v45deep .svg-wrap svg { width: 100%; height: auto; display: block; }
+    #v45deep .nt { fill: var(--foreground); font-size: 13px; font-weight: 500; }
+    #v45deep .nd { fill: var(--muted-foreground); font-size: 11.5px; }
+    #v45deep .el { fill: var(--muted-foreground); font-size: 11.5px; }
+    #v45deep .e  { stroke: var(--border); stroke-width: 1.5; fill: none; }
+    #v45deep .ed { stroke: var(--border); stroke-width: 1.5; fill: none; stroke-dasharray: 5 4; }
+    #v45deep .ea { stroke: var(--viz-series-1); stroke-width: 1.5; fill: none; }
+    #v45deep .grp { fill: var(--muted); fill-opacity: .45; stroke: var(--border); stroke-dasharray: 4 4; }
+    #v45deep .gt { fill: var(--muted-foreground); font-size: 12px; font-weight: 500; }
+    #v45deep .n-flow  { fill: var(--viz-series-1); fill-opacity: .10; stroke: var(--border); }
+    #v45deep .n-dom   { fill: var(--viz-series-2); fill-opacity: .10; stroke: var(--border); }
+    #v45deep .n-store { fill: var(--viz-series-4); fill-opacity: .10; stroke: var(--border); }
+    #v45deep .n-ext   { fill: var(--muted); fill-opacity: .55; stroke: var(--border); stroke-dasharray: 5 4; }
+    #v45deep .tabpanel { padding-top: 12px; }
+    #v45deep .stageflow { display: flex; flex-wrap: wrap; gap: 6px 0; align-items: center; margin: 8px 0 14px; }
+    #v45deep .stage-btn { border: 1px solid var(--border); background: none; border-radius: 999px; padding: 4px 12px; color: var(--muted-foreground); }
+    #v45deep .stage-btn .no { font-weight: 500; margin-right: 4px; color: inherit; }
+    #v45deep .stage-btn.on { border-color: transparent; background: color-mix(in srgb, var(--viz-series-1) 18%, transparent); color: var(--foreground); }
+    #v45deep .arrow { color: var(--muted-foreground); margin: 0 6px; }
+    #v45deep .rulelist { margin: 6px 0 0; padding-left: 0; list-style: none; }
+    #v45deep .rulelist li { padding: 2.5px 0 2.5px 16px; position: relative; }
+    #v45deep .rulelist li::before { content: ''; position: absolute; left: 2px; top: 11px; width: 5px; height: 5px; border-radius: 999px; background: var(--viz-series-1); opacity: .7; }
+    #v45deep .faillist { margin: 6px 0 0; padding-left: 0; list-style: none; }
+    #v45deep .faillist li { padding: 2.5px 0 2.5px 16px; position: relative; }
+    #v45deep .faillist li::before { content: ''; position: absolute; left: 2px; top: 11px; width: 5px; height: 5px; border-radius: 999px; background: var(--viz-series-5, var(--red)); opacity: .7; }
+    #v45deep .chip { display: inline-flex; align-items: center; border: 1px solid var(--border); border-radius: 999px; padding: 1px 9px; color: var(--muted-foreground); margin: 0 6px 6px 0; }
+    #v45deep .ladder { list-style: none; margin: 0; padding: 0; counter-reset: rung; }
+    #v45deep .ladder li { counter-increment: rung; padding: 8px 12px 8px 44px; position: relative; border-left: 3px solid var(--viz-series-1); margin-bottom: 6px; background: color-mix(in srgb, var(--muted) 40%, transparent); }
+    #v45deep .ladder li::before { content: counter(rung); position: absolute; left: 14px; top: 9px; font-weight: 500; color: var(--foreground); }
+    #v45deep .ladder li .h { font-weight: 500; }
+    #v45deep .ladder li .b { color: var(--muted-foreground); }
+    #v45deep .ladder li:nth-child(1) { border-left-color: var(--viz-series-1); }
+    #v45deep .ladder li:nth-child(2) { border-left-color: color-mix(in srgb, var(--viz-series-1) 75%, var(--border)); }
+    #v45deep .ladder li:nth-child(3) { border-left-color: color-mix(in srgb, var(--viz-series-1) 55%, var(--border)); }
+    #v45deep .ladder li:nth-child(4) { border-left-color: color-mix(in srgb, var(--viz-series-1) 35%, var(--border)); }
+    #v45deep .ladder li:nth-child(5) { border-left-color: var(--border); }
+  </style>
+
+  <h1>dsh-superagent · 设计思路与处理流程深化</h1>
+  <div class="sub">承接 4+1 视图：为什么这样设计 · 每个阶段怎么处理 · 五类知识如何更新生效（依据 docs/000–004、006–007）</div>
+
+  <div class="nav nav-pills" role="tablist" aria-label="深化专题">
+    <button class="nav-link active" id="dd-tab-idea" role="tab" aria-controls="dd-panel-idea" aria-selected="true" type="button">设计思路</button>
+    <button class="nav-link" id="dd-tab-flow" role="tab" aria-controls="dd-panel-flow" aria-selected="false" type="button">处理流程</button>
+    <button class="nav-link" id="dd-tab-know" role="tab" aria-controls="dd-panel-know" aria-selected="false" type="button">知识更新处理</button>
+  </div>
+
+  <!-- ============ 设计思路 ============ -->
+  <div id="dd-panel-idea" role="tabpanel" aria-labelledby="dd-tab-idea" class="tabpanel">
+    <div class="card" style="padding:12px 16px; margin-bottom:14px;">
+      <div style="font-weight:500;">「占用尽可能少的人类注意力，交付尽可能多的价值。」</div>
+      <div class="text-small" style="color:var(--muted-foreground); margin-top:4px;">每条消息、每个通知、每个设置、面板上的每个元素都要消耗某个人的注意力——产出的价值必须大于这个成本，否则就被删掉。整个系统按这个标准做减法。</div>
+    </div>
+
+    <h3>五条设计支柱</h3>
+    <div class="viz-grid">
+      <div>
+        <div style="font-weight:500;">概念最少</div>
+        <div class="text-small" style="color:var(--muted-foreground);">领域只有 Source/Trigger/Thread/Eval/Mandate/Ticket/Assignment/Subscription 等九个概念。业务需求变成其中一个概念的属性，或一段提示词——不为它新增概念。</div>
+      </div>
+      <div>
+        <div style="font-weight:500;">设置最少</div>
+        <div class="text-small" style="color:var(--muted-foreground);">当一个默认值适合几乎所有团队，这个设置就消失。能用语言描述的行为（何时合并、如何措辞）是提示词，不是开关。</div>
+      </div>
+      <div>
+        <div style="font-weight:500;">面板只显示需要人的</div>
+        <div class="text-small" style="color:var(--muted-foreground);">总览页第一屏永远是「等一个人处理什么」；健康状态不占版面。评估超时未解决才找人，24 小时后不再打扰。</div>
+      </div>
+      <div>
+        <div style="font-weight:500;">单一写入者</div>
+        <div class="text-small" style="color:var(--muted-foreground);">每类状态只有一个写者（Trigger/Ticket/Decision 只由 Engine 写；回执只由 Outbox 写；健康条目由认领的部件写），其余角色只读或请求写者——冲突在结构上不可能。</div>
+      </div>
+      <div>
+        <div style="font-weight:500;">显式窄依赖</div>
+        <div class="text-small" style="color:var(--muted-foreground);">每个类拿到的接口只命名它用到的部分（TypeScript Pick 类型）：Engine 按角色暴露五个视图，Source 只见 SourceContext。核心 <code>src/core</code> 零 I/O，可在内存仓储上全量测试（60 个测试文件）。</div>
+      </div>
+    </div>
+
+    <h3>决策权分离：谁决定什么</h3>
+    <div class="viz-grid">
+      <div>
+        <div style="font-weight:500;">Gate 准入 · 确定性代码</div>
+        <ul class="rulelist text-small">
+          <li>决定：谁能发起工作、强度是 explicit 还是 inferred</li>
+          <li>依据：允许名单、是否点名、准入表、bot 列表、接受模式</li>
+          <li>不做：不读内容、不调用模型——规则变了结果必变</li>
+        </ul>
+      </div>
+      <div>
+        <div style="font-weight:500;">主 Session · 模型研判</div>
+        <ul class="rulelist text-small">
+          <li>决定：accept / attach / stop / ignore，一次路由多个候选</li>
+          <li>约束：只转发原始请求与路由事实，不做技术决策，不等待</li>
+          <li>推断候选必须完整评估；卡片明显无关才可直接 ignore</li>
+        </ul>
+      </div>
+      <div>
+        <div style="font-weight:500;">Executor · 技术执行</div>
+        <ul class="rulelist text-small">
+          <li>决定：技术方案、范围内追问是否接、何时 ready</li>
+          <li>约束：不能自我授权（Mandate 限定）、不能宣布「人要我停」</li>
+          <li>超范围的消息交回（handback）重新路由</li>
+        </ul>
+      </div>
+      <div>
+        <div style="font-weight:500;">人 · 最高决定权</div>
+        <ul class="rulelist text-small">
+          <li>stop 直接撤回 Mandate（模型与执行器都无此权）</li>
+          <li>暂停跨追问/重启持续有效，只有人能解除</li>
+          <li>审阅与合并；对话里说「停」也只是普通 Trigger，仍走评估</li>
+        </ul>
+      </div>
+    </div>
+
+    <h3>提示词强度阶梯（从强到弱）</h3>
+    <ol class="ladder">
+      <li><span class="h">工具与宿主强制的事实</span> — <span class="b">身份、权限、工具参数校验、回复用途与长度上限。提示词改不动它们：外部文本永远是数据，不能变成授权。</span></li>
+      <li><span class="h">内置段落（可被团队覆盖）</span> — <span class="b">角色职责、订阅与回复、派发与工作、准入研判、环境与策略模板。覆盖记录所基于的默认版本，升级后可对比。</span></li>
+      <li><span class="h">匹配规则的要求</span> — <span class="b">仅对该推断工单的 Executor 生效：过程与沟通要求可覆盖默认，静默规则可抑制确认消息。</span></li>
+      <li><span class="h">团队段落与团队技能</span> — <span class="b">沟通、工单范围、交付要求三段 + 按需加载的技能（如身份对照表）。</span></li>
+      <li><span class="h">外部文本</span> — <span class="b">消息、评论、引用的文档：只是评估输入，永不改变规则与授权。</span></li>
+    </ol>
+
+    <h3>运营责任（写进文档的四条军规）</h3>
+    <ul class="rulelist text-small">
+      <li>从小开始：先短允许名单 + 主动工作只记录（observe），看准了再放宽。</li>
+      <li>为更少噪音调优：吵了就改短改严提示词或暂停，不要加更多解释消息。</li>
+      <li>不用它刷量：批量 PR、广播消息、假忙的代价大于收益。</li>
+      <li>对它说的话负责：以团队名义发出的每句话都要能被人在提示词里纠正。</li>
+    </ul>
+  </div>
+
+  <!-- ============ 处理流程 ============ -->
+  <div id="dd-panel-flow" role="tabpanel" aria-labelledby="dd-tab-flow" class="tabpanel" hidden>
+    <h3 style="margin-top:0;">十个阶段：点击查看各阶段的规则与失败处理</h3>
+    <div class="stageflow" id="dd-stages"></div>
+    <div class="card" style="padding:12px 16px;">
+      <div style="display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 10px;">
+        <span id="dd-stage-name" style="font-weight:500; font-size:var(--font-size-base);"></span>
+        <span id="dd-stage-actors"></span>
+      </div>
+      <div class="text-small" id="dd-stage-desc" aria-live="polite" style="color:var(--muted-foreground); margin:2px 0 8px;"></div>
+      <div style="display:flex; gap:24px; flex-wrap:wrap;">
+        <div style="flex:1 1 300px; min-width:260px;">
+          <div class="text-small" style="font-weight:500;">关键规则</div>
+          <ul class="rulelist text-small" id="dd-stage-rules"></ul>
+        </div>
+        <div style="flex:1 1 300px; min-width:260px;">
+          <div class="text-small" style="font-weight:500;">失败 · 超时 · 恢复</div>
+          <ul class="faillist text-small" id="dd-stage-fails"></ul>
+        </div>
+      </div>
+    </div>
+
+    <h3>授权双路径：新工作走评估，继续工作走订阅</h3>
+    <div class="svg-wrap"><svg viewBox="0 0 980 292" role="img" aria-label="Trigger 双路径：评估路径与订阅路径">
+      <text class="gt" x="16" y="16">上路：Eval 路径 —— 是否开始新工作（唯一能建工单的路）</text>
+      <rect class="n-flow" x="16" y="26" width="96" height="56" rx="8"/>
+      <text class="nt" x="64" y="50" text-anchor="middle">Trigger</text>
+      <text class="nd" x="64" y="66" text-anchor="middle">不可变事件</text>
+      <rect class="n-flow" x="140" y="26" width="130" height="56" rx="8"/>
+      <text class="nt" x="205" y="46" text-anchor="middle">Gate 准入</text>
+      <text class="nd" x="205" y="62" text-anchor="middle">确定性 · 无模型</text>
+      <text class="nd" x="205" y="76" text-anchor="middle">强度三档 ↓</text>
+      <rect class="n-flow" x="298" y="26" width="140" height="56" rx="8"/>
+      <text class="nt" x="368" y="46" text-anchor="middle">Eval 研判</text>
+      <text class="nd" x="368" y="62" text-anchor="middle">主 Session · 有界上下文</text>
+      <rect class="n-flow" x="466" y="26" width="120" height="56" rx="8"/>
+      <text class="nt" x="526" y="46" text-anchor="middle">Decision</text>
+      <text class="nd" x="526" y="62" text-anchor="middle">accept/stop/</text>
+      <text class="nd" x="526" y="76" text-anchor="middle">ignore/unavail.</text>
+      <rect class="n-flow" x="614" y="26" width="150" height="56" rx="8"/>
+      <text class="nt" x="689" y="46" text-anchor="middle">新 Ticket</text>
+      <text class="nd" x="689" y="62" text-anchor="middle">+ Mandate 授权</text>
+      <path class="ea" d="M112 54 H140" marker-end="url(#da1)"/>
+      <path class="ea" d="M270 54 H298" marker-end="url(#da1)"/>
+      <path class="ea" d="M438 54 H466" marker-end="url(#da1)"/>
+      <path class="ea" d="M586 54 H614" marker-end="url(#da1)"/>
+      <text class="el" x="778" y="50">明确请求任意模式都走通；</text>
+      <text class="el" x="778" y="66">推断候选受 accept 模式控制</text>
+      <text class="el" x="778" y="82">（off 不入 / observe 只记录）</text>
+
+      <rect class="n-dom" x="140" y="104" width="130" height="20" rx="6"/>
+      <text class="nd" x="205" y="118" text-anchor="middle">明确 explicit</text>
+      <rect class="n-dom" x="140" y="128" width="130" height="20" rx="6"/>
+      <text class="nd" x="205" y="142" text-anchor="middle">推断 inferred</text>
+      <rect class="n-dom" x="140" y="152" width="130" height="20" rx="6"/>
+      <text class="nd" x="205" y="166" text-anchor="middle">不准入 · 记录去向</text>
+
+      <text class="gt" x="16" y="206">下路：Subscription 路径 —— 继续已有工作（绕过 Gate，不授新权）</text>
+      <rect class="n-dom" x="16" y="216" width="120" height="56" rx="8"/>
+      <text class="nt" x="76" y="236" text-anchor="middle">订阅线程消息</text>
+      <text class="nd" x="76" y="252" text-anchor="middle">含 bot 与 CI</text>
+      <rect class="n-dom" x="164" y="216" width="130" height="56" rx="8"/>
+      <text class="nt" x="229" y="236" text-anchor="middle">扇出到工单</text>
+      <text class="nd" x="229" y="252" text-anchor="middle">人的消息直达</text>
+      <text class="nd" x="229" y="266" text-anchor="middle">可复活已结束工单</text>
+      <rect class="n-dom" x="322" y="216" width="190" height="56" rx="8"/>
+      <text class="nt" x="417" y="236" text-anchor="middle">Executor 决定追问</text>
+      <text class="nd" x="417" y="252" text-anchor="middle">范围内：处理并确认</text>
+      <text class="nd" x="417" y="266" text-anchor="middle">主 Session 此间只能停止</text>
+      <rect class="n-dom" x="540" y="216" width="170" height="56" rx="8"/>
+      <text class="nt" x="625" y="236" text-anchor="middle">超范围 → handback</text>
+      <text class="nd" x="625" y="252" text-anchor="middle">交回时带上理由</text>
+      <text class="nd" x="625" y="266" text-anchor="middle">工单保留订阅</text>
+      <path class="ea" d="M136 244 H164" marker-end="url(#da1)"/>
+      <path class="ea" d="M294 244 H322" marker-end="url(#da1)"/>
+      <path class="ea" d="M512 244 H540" marker-end="url(#da1)"/>
+      <path class="ed" d="M540 232 C 470 220, 430 140, 424 82" marker-end="url(#da2)"/>
+      <text class="el" x="440" y="148">无主后回 Eval</text>
+      <defs>
+        <marker id="da1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--viz-series-1)"/></marker>
+        <marker id="da2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--muted-foreground)"/></marker>
+      </defs>
+    </svg></div>
+  </div>
+
+  <!-- ============ 知识更新处理 ============ -->
+  <div id="dd-panel-know" role="tabpanel" aria-labelledby="dd-tab-know" class="tabpanel" hidden>
+    <h3 style="margin-top:0;">五类知识，各有版本化与生效路径</h3>
+    <div class="table-responsive"><table class="table table-sm">
+      <thead><tr><th>知识类型</th><th>写入者</th><th>存放</th><th>更新触发</th><th>生效方式</th><th>审计</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>策略 Policy</td><td>Settings（panel / tool / sync）</td><td>设置块 + <code>policyVersion</code> 哈希</td>
+          <td>规则 / 接受模式 / 名单 / 准入表 / bot 表任一变化</td>
+          <td>变更即生效：丢弃在途 Eval 重排；通知受影响活工单；复活前重验证</td>
+          <td>每次 Mandate 记录所依据的版本</td>
+        </tr>
+        <tr>
+          <td>提示词 Prompts</td><td>panel 或主 Session 工具</td><td>不可变编号快照（Versions）</td>
+          <td>团队保存 / 升级带来新默认</td>
+          <td>每次模型请求都读最新版（同回合后续步骤亦然）；不重启会话</td>
+          <td>版本含前身 / 时间 / 来源；覆盖记录默认基线</td>
+        </tr>
+        <tr>
+          <td>设置 Settings</td><td>Settings（带 origin 权限）</td><td>分块 revision + 历史快照</td>
+          <td>面板 / 工具 / 名单同步保存</td>
+          <td>保存即生效；改账号类字段触发重启再跑 Setup</td>
+          <td>乐观并发：过期 revision 返回 409 拒绝</td>
+        </tr>
+        <tr>
+          <td>外部世界状态</td><td>各 Source</td><td>kv：读游标 / CI 指纹 / 话题消息</td>
+          <td>每轮轮询增量推进</td>
+          <td>重启不重放；缺口走历史恢复；订阅线程轮询至结束后两周</td>
+          <td>丢失的回复留 dropped 记录（何时 / 为何）</td>
+        </tr>
+        <tr>
+          <td>会话与执行知识</td><td>Sessions / Executor</td><td>会话历史 + Input 已读记录 + 恢复备注</td>
+          <td>通知 / 报告 / 追问 / 停机</td>
+          <td>通知不打扰注入；转发保序；重启后中断派工带恢复备注续跑</td>
+          <td>执行器只能读它工作过的提示词版本（mayRead）</td>
+        </tr>
+      </tbody>
+    </table></div>
+
+    <h3>策略变更的传播流程</h3>
+    <div class="svg-wrap"><svg viewBox="0 0 980 316" role="img" aria-label="Policy 变更传播流程图">
+      <rect class="n-store" x="16" y="30" width="150" height="60" rx="8"/>
+      <text class="nt" x="91" y="54" text-anchor="middle">保存策略</text>
+      <text class="nd" x="91" y="72" text-anchor="middle">panel / tool / sync</text>
+      <rect class="n-store" x="210" y="30" width="170" height="60" rx="8"/>
+      <text class="nt" x="295" y="50" text-anchor="middle">policyVersion 变化</text>
+      <text class="nd" x="295" y="68" text-anchor="middle">规则+模式+Source 部分哈希</text>
+      <path class="e" d="M166 60 H210" marker-end="url(#da2b)"/>
+
+      <rect class="n-flow" x="450" y="16" width="260" height="60" rx="8"/>
+      <text class="nt" x="580" y="36" text-anchor="middle">在途 Eval 全部丢弃</text>
+      <text class="nd" x="580" y="52" text-anchor="middle">其 Trigger 重新排队</text>
+      <text class="nd" x="580" y="66" text-anchor="middle">在当前版本下重开评估</text>
+
+      <rect class="n-flow" x="450" y="102" width="260" height="72" rx="8"/>
+      <text class="nt" x="580" y="124" text-anchor="middle">policyEffects 找受影响活工单</text>
+      <text class="nd" x="580" y="142" text-anchor="middle">发 policy-changed Input：匹配规则变了（含新文本）/</text>
+      <text class="nd" x="580" y="158" text-anchor="middle">请求者可能已无资格 / 主动工作不再接受</text>
+
+      <rect class="n-flow" x="450" y="200" width="260" height="60" rx="8"/>
+      <text class="nt" x="580" y="222" text-anchor="middle">不撤销在途 Mandate</text>
+      <text class="nd" x="580" y="240" text-anchor="middle">半途取消会留半成品——只通知不撤权</text>
+
+      <rect class="n-dom" x="450" y="280" width="260" height="26" rx="7"/>
+      <text class="nd" x="580" y="297" text-anchor="middle">复活前按当前策略重验证（revalidate）</text>
+
+      <path class="e" d="M380 50 C 415 50, 420 46, 450 44" marker-end="url(#da2b)"/>
+      <path class="e" d="M380 66 C 415 74, 420 118, 450 130" marker-end="url(#da2b)"/>
+      <path class="e" d="M380 78 C 415 100, 420 220, 450 228" marker-end="url(#da2b)"/>
+      <path class="e" d="M580 260 V280" marker-end="url(#da2b)"/>
+
+      <rect class="n-ext" x="760" y="280" width="204" height="26" rx="7"/>
+      <text class="nd" x="862" y="297" text-anchor="middle">失败 → 消息视为未达工单，回 Eval</text>
+      <path class="ed" d="M710 293 H760" marker-end="url(#da2b)"/>
+
+      <rect class="n-dom" x="760" y="102" width="204" height="72" rx="8"/>
+      <text class="nt" x="862" y="124" text-anchor="middle">名单同步</text>
+      <text class="nd" x="862" y="142" text-anchor="middle">飞书群成员 → 允许名单</text>
+      <text class="nd" x="862" y="158" text-anchor="middle">启动时与手动 Sync now，</text>
+      <text class="nd" x="862" y="172" text-anchor="middle">保存同样走左侧整个流程</text>
+      <text class="el" x="16" y="150">设计取舍：弱化准入格不会立刻叫停</text>
+      <text class="el" x="16" y="168">已接的工单；只在其复活重验证时可能</text>
+      <text class="el" x="16" y="186">撤销其 Mandate。</text>
+      <defs>
+        <marker id="da2b" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--muted-foreground)"/></marker>
+      </defs>
+    </svg></div>
+
+    <h3>提示词版本：改动如何到达正在工作的会话</h3>
+    <ul class="rulelist text-small">
+      <li>每次保存生成不可变快照：完整配置 + 编号 + 前任 + 时间 + 来源（panel 或工具）；恢复旧版也是新版本。</li>
+      <li>会话<b>每次模型请求</b>都读最新版本——同一个回合里的后续步骤也会用上新文案；保存不重启、不打断、不唤醒会话。</li>
+      <li>宿主记录每个会话用过的版本；Executor 只能读它<b>工作过</b>的版本（mayRead 限定），防止跨版本串读。</li>
+      <li>策略段落（<code>runtime/policy</code>）放在提示词最后，由设置实时生成——策略变化不动前面的文本。</li>
+      <li>升级后：未覆盖的部分自动跟随新默认；覆盖过的部分标记「默认已更新」并展示差异，团队三选一（保留 / 换新 / 再改）。</li>
+      <li>校验防漂移：未知键、缺失模板占位符（<code>{version}</code>、<code>{rules}</code> 等）、保留技能名一律拒绝，从不静默截断；与默认相同的覆盖自动清除。</li>
+    </ul>
+
+    <h3>世界与会话状态：增量、恢复、不重放</h3>
+    <ul class="rulelist text-small">
+      <li>Source 把读位置（通知游标、CI 指纹、话题消息）存在 kv：重启从位置继续，不重放事件；飞书另有历史恢复补缺口。</li>
+      <li>先落库后执行（stored work）：转发、派工、投递都先写进 effect/outbox 队列再做事——进程死在半路，重启后队列还在。</li>
+      <li>停机保留未取进会话历史的消息；重启时中断的 Assignment 换新派工并附恢复备注（先查目录、git 历史和 GitHub 再重复外部动作），最老的工单优先。</li>
+      <li>Input 的「已读」按步记录：被取消的步骤不算读过；工单结束时未读且未被认领/回答/交回的追问释放回 Eval。</li>
+      <li>结构迁移单向：SCHEMA_VERSION 只升不降，新库拒绝旧版启动；升级前备份 <code>orchestrator.sqlite</code> 是回滚唯一途径。</li>
+    </ul>
+  </div>
+
+  <script>
+    (function () {
+      var root = document.getElementById('v45deep');
+      if (!root) return;
+
+      var STAGES = [
+        { n: '采集', who: ['GitHub/飞书 Source', '轮询循环'], d: 'Source 用 CLI 读取外部世界：GitHub 每轮读 agent 账号的通知、开放工单的 PR 与 CI、订阅线程；飞书消费长连接事件并轮询订阅话题。',
+          rules: ['通知轮询默认约每分钟一轮；订阅线程在工单存活期间轮询，结束后再追两周', '每类读取独立：一个 Issue 读失败不影响别的事件进入', 'Source 持有读位置（kv 游标），重启从断点继续、不重放'],
+          fails: ['读失败把错误记在自己的 Thread 上，下一轮重试；连续 3 轮失败才升级为 Source 错误', 'GitHub 404 也重试（私库失去权限时同样返回 404）', '持续失败一天后放弃该条目，读位置不动——后来的通知还能补读'] },
+        { n: '过滤', who: ['Source'], d: '进入领域之前，Source 丢弃不该进来的事件，并留下可查的记录。',
+          rules: ['丢弃 agent 自己发出的消息（防自激励循环）', 'mentions-only 模式下丢弃未 @机器人 的消息', '每个被过滤的 Trigger 记录原因码，面板 Source 页可查'],
+          fails: ['过滤只丢事件不删记录——审计上始终可回答「为什么没反应」'] },
+        { n: '入域', who: ['Intake', 'Engine'], d: 'Engine.receive 幂等接收：一次存储、多处引用。这是所有后续路径的分岔点。',
+          rules: ['Trigger 一次落库 + Disposition 去向记录；重复投递只算一次', '按 Source 的映射归入 Thread；相关 Thread 记 Correlation（只作上下文）', '扇出到订阅该 Thread 的工单作上下文；人的消息直达工单、不再评估', '其余 Trigger 在其主 Thread 排队等 Eval（同 Thread 串行、批合并）'],
+          fails: ['全部在一个事务里：落库成功才可能有后续副作用'] },
+        { n: '准入', who: ['Gate（确定性代码）'], d: '不调用模型的一层：按名单与表格机械判定强度，规则相同则结果必同——这是授权可以被审计的原因。',
+          rules: ['允许名单内的人点名 agent → explicit（明确请求，任何接受模式都放行）', '名单外的人在有工单的线程追问 → inferred（推断）；准入表可将其提为 explicit', 'bot 列表内的 bot（如 dependabot[bot]）→ 只能产生推断候选，永远不能明确请求或叫停工单', '接受模式 off：一切推断不入流；observe（默认）：照常评估但只记录「would accept」'],
+          fails: ['准入表弱化不立即叫停在途工单——复活时重验证才会撤回 Mandate'] },
+        { n: '研判', who: ['主 Session', 'MasterAssessor'], d: '模型在有界上下文里判断「这是不是该做的新工作」。上下文由代码装配，不由模型自取。',
+          rules: ['候选卡经 assessment 效应送进主 Session 的当前回合（并发上限 4）', '上下文：Thread 前 5 条 + Trigger 左右各 5 条（两侧各 2 条放宽到 1200 字），最多 8 个相关工单，候选文本 4000 字', '每条启用规则必须逐一判定（匹配与否都记录）；推断候选必须完整评估，无明显规则相关才允许从卡片直接 ignore', 'explicit 候选经 orchestrator_route 一次可出多个决定；每个决定独立执行、互不阻塞'],
+          fails: ['截止时间从候选送达主 Session 起算；未送达的永不超时', '超时重排两次，第三次记 unavailable；评估失败同样记 unavailable，稍后的 Trigger 可开新评估', '暂停期间不超时；恢复后各截止时间顺延暂停时长'] },
+        { n: '建单', who: ['Engine（Tickets/Replies）'], d: 'accept 在单个事务里原子地建出整套执行骨架——要么全有，要么全无。',
+          rules: ['Ticket + Mandate（策略版本/范围/强度/匹配规则/发送者身份/接收依据）+ 首个 Assignment + Subscriptions', '同时队列确认消息（Outbox 回执），在原对话发出、限 100 词', 'Mandate 不可变：工单结束不撤回，只有人的 stop 或复活时重验证失败能撤'],
+          fails: ['确认消息等渠道消息按 Ticket×会话保序发送；渠道消失则丢弃留痕，不再重排'] },
+        { n: '派工', who: ['Effects(launch)', 'DshExecutor'], d: '把工单变成一个能干活的环境：目录、Session、第一条消息。',
+          rules: ['prepare 命令用 sh 在执行根目录跑一次（默认 10 分钟上限），典型是 git fetch + worktree 建独立检出', 'Executor Session 命名 worker-<ticket>，用 worker 预设（Shell 5 秒转后台作业）', '并发槽位 = maxWorkers，人的消息可用第 +1 个槽并优先于新启动——新工作永远挤不掉人'],
+          fails: ['瞬时故障（408/429/5xx、断连）按 5s→300s 重试 3 次', 'prepare 失败或非瞬时失败：工单记失败等人的消息或手动重试；失败不自动重跑'] },
+        { n: '执行', who: ['Executor Session'], d: '无人值守的编码智能体在自己的目录里读原始材料、改代码、验证，并与世界保持有节制的通信。',
+          rules: ['6 个 orchestrator_* 工具：读资源、确认、报告、退订无关线程、上下文订阅、交回消息；外加 DSH 的文件/搜索/Shell/作业/技能工具', '报告六态：progress / waiting / ready / blocked / failed / dropped；要人回答的问题走结构化 human_action 字段，一次一个具体问题', '追问所有权：自己线程上人的消息由 Executor 决定——范围内处理，超范围 handback 交回', '后台作业每回合最多 30 分钟；移交人后子代理停止、可评审的 Shell 作业（如预览服务）继续跑且不占槽位'],
+          fails: ['blocked/failed 后不再自动投递输入（CI/bot 消息只记录不投递）；人的消息、非失败报告或重试解除', '会话错误记 failed；模型瞬时故障续跑 15/30/60 秒三次', '工具在工单结束后整体拒绝调用'] },
+        { n: '交付', who: ['Executor', 'Outbox', 'Channel'], d: '结果回到请求发生的那个对话，措辞与顺序都被约束。',
+          rules: ['PR 认领规则：分支最后一段等于工单短名即属该工单；报告 ready 时绑定，工单开始 follow 这个 PR', '回复四用途：确认 / 回答 / 结果 / 待人工决定；同工单同会话严格按序，前面失败 3 次才允许后面绕行', 'auto-merge 由交付要求提示词治理：默认不用 agent 账号启用（GitHub 把合并归到启用者名下）；需要时由另一个账号的 CLI 执行'],
+          fails: ['渠道永久消失（Issue 删除、会话锁定、消息撤回）：丢弃留痕不重试', '回复评论不存在时改发 PR 主会话'] },
+        { n: '收尾与恢复', who: ['Engine', 'Effects', '面板'], d: '工单由它打开的线程的关闭来结束；系统任何时刻可被杀掉再站起来。',
+          rules: ['threadClosed → followsDone：它开的 PR 都关了（或没开 PR 而 ready）即结束，结局取最后一次关闭（merged/closed）', '结束时未读、未认领、未交回的追问释放回 Eval；被人叫停的工单不再接收任何消息', '重启：中断的 Assignment 记 assignmentInterrupted，新派工附恢复备注（先查目录/git/GitHub 再重复外部动作），最老工单优先；等待中的启动重新入队'],
+          fails: ['优雅停机等执行器最多 5 分钟；作业最多再等 10 秒', '工单处于 person/delivery、blocked、failed 时可手动 retry：同一 Session、目录、分支、PR 换新派工'] }
+      ];
+
+      var flowEl = document.getElementById('dd-stages');
+      var nameEl = document.getElementById('dd-stage-name');
+      var descEl = document.getElementById('dd-stage-desc');
+      var actorsEl = document.getElementById('dd-stage-actors');
+      var rulesEl = document.getElementById('dd-stage-rules');
+      var failsEl = document.getElementById('dd-stage-fails');
+      var idx = 0;
+
+      function li(txt) { var l = document.createElement('li'); l.textContent = txt; return l; }
+      function render() {
+        var s = STAGES[idx];
+        nameEl.textContent = (idx + 1) + ' · ' + s.n;
+        descEl.textContent = s.d;
+        actorsEl.innerHTML = '';
+        s.who.forEach(function (w) {
+          var c = document.createElement('span'); c.className = 'chip'; c.textContent = w; actorsEl.appendChild(c);
+        });
+        rulesEl.innerHTML = ''; s.rules.forEach(function (r) { rulesEl.appendChild(li(r)); });
+        failsEl.innerHTML = ''; s.fails.forEach(function (f) { failsEl.appendChild(li(f)); });
+        Array.prototype.forEach.call(flowEl.querySelectorAll('.stage-btn'), function (b, i) {
+          b.classList.toggle('on', i === idx);
+        });
+      }
+      STAGES.forEach(function (s, i) {
+        if (i > 0) { var a = document.createElement('span'); a.className = 'arrow'; a.textContent = '→'; a.setAttribute('aria-hidden', 'true'); flowEl.appendChild(a); }
+        var b = document.createElement('button');
+        b.type = 'button'; b.className = 'stage-btn cursor-interaction';
+        b.innerHTML = '<span class="no">' + (i + 1) + '</span>' + s.n;
+        b.addEventListener('click', function () { idx = i; render(); save(); });
+        flowEl.appendChild(b);
+      });
+      function save() {
+        if (window.zcode && window.zcode.setWidgetState) {
+          window.zcode.setWidgetState({ modelContent: { view: 'deep-dive', stage: idx } }).catch(function () {});
+        }
+      }
+      try {
+        var saved = window.zcode && window.zcode.widgetState && window.zcode.widgetState.modelContent;
+        if (saved && saved.view === 'deep-dive' && typeof saved.stage === 'number') {
+          idx = Math.min(Math.max(saved.stage, 0), STAGES.length - 1);
+        }
+      } catch (e) { }
+      render();
+    })();
+  </script>
+</div>
+
+<script>
+document.querySelectorAll('.nav-pills[role=tablist]').forEach(function (list) {
+  var links = Array.prototype.slice.call(list.querySelectorAll('.nav-link[role=tab]'));
+  links.forEach(function (link) {
+    link.addEventListener('click', function () {
+      links.forEach(function (l) {
+        var on = l === link;
+        l.classList.toggle('active', on);
+        l.setAttribute('aria-selected', on ? 'true' : 'false');
+        var panel = document.getElementById(l.getAttribute('aria-controls'));
+        if (panel) panel.hidden = !on;
+      });
+    });
+    if (!link.getAttribute('id')) link.setAttribute('id', 'tab-' + Math.random().toString(36).slice(2));
+  });
+});
+document.querySelectorAll('[data-tooltip]').forEach(function (el) {
+  el.setAttribute('title', el.getAttribute('data-tooltip'));
+});
+</script>
+</body>
+</html>

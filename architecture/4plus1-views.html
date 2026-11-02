@@ -1,0 +1,663 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>dsh-superagent · 4+1 架构视图</title>
+<style>
+:root{
+  color-scheme: light dark;
+  --font-size-base:14px;
+  --background:light-dark(#ffffff,#151515);
+  --foreground:light-dark(#1c1c1c,#ececec);
+  --card:light-dark(#ffffff,#1e1e1e);
+  --card-foreground:light-dark(#1c1c1c,#ececec);
+  --muted:light-dark(#f1f1f1,#262626);
+  --muted-foreground:light-dark(#5f5f5f,#9e9e9e);
+  --border:light-dark(#e2e2e2,#3c3c3c);
+  --input:light-dark(#e8e8e8,#333333);
+  --primary:light-dark(#232323,#ececec);
+  --primary-foreground:light-dark(#ffffff,#151515);
+  --destructive:light-dark(#c62828,#ef7b7b);
+  --ring:light-dark(#232323,#ececec);
+  --accent:var(--muted);
+  --viz-series-1:light-dark(#4f79a8,#7da2cb);
+  --viz-series-2:light-dark(#6f9a5f,#94bb84);
+  --viz-series-3:light-dark(#b3853f,#d3a968);
+  --viz-series-4:light-dark(#8477b5,#a89ed1);
+  --viz-series-5:light-dark(#bb5555,#dd8282);
+  --viz-series-6:light-dark(#439e96,#6fc4bc);
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--background);color:var(--foreground);
+  font:400 var(--font-size-base)/1.55 system-ui,-apple-system,"Segoe UI","Microsoft YaHei",sans-serif;
+  padding:28px 22px 64px;max-width:1120px;margin-inline:auto}
+h1{font-size:calc(var(--font-size-base) + 4px);font-weight:500;margin:0 0 6px}
+h2{font-size:calc(var(--font-size-base) + 2px);font-weight:500}
+h3{font-size:var(--font-size-base);font-weight:500}
+p{margin:.4em 0}
+code{font-family:ui-monospace,Consolas,"Cascadia Mono",monospace;font-size:.92em;
+  background:var(--muted);padding:1px 5px;border-radius:5px}
+pre code{display:block;padding:10px 12px;overflow:auto}
+a{color:var(--viz-series-1)}
+hr{border:none;border-top:1px solid var(--border)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px 16px}
+.viz-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:14px}
+.viz-row{display:flex;flex-wrap:wrap;align-items:center}
+.viz-badge{display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:999px;
+  padding:2px 10px;font-size:12px;color:var(--muted-foreground)}
+.viz-controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+.nav{display:flex;flex-wrap:wrap;gap:6px}
+.nav-pills .nav-link{border:1px solid var(--border);background:none;border-radius:999px;padding:5px 14px;
+  color:var(--muted-foreground);font:inherit;cursor:pointer}
+.nav-pills .nav-link:hover{background:var(--muted)}
+.nav-pills .nav-link.active{background:var(--primary);color:var(--primary-foreground);border-color:transparent}
+[role=tabpanel]{padding-top:12px}
+.btn{border:1px solid var(--border);background:none;border-radius:9px;padding:5px 14px;color:var(--foreground);
+  font:inherit;cursor:pointer}
+.btn:hover{background:var(--muted)}
+.btn:disabled{opacity:.45;cursor:default}
+.btn-primary{background:var(--primary);color:var(--primary-foreground);border-color:transparent}
+.btn-sm{padding:3px 10px;font-size:12px;border-radius:8px}
+.table{width:100%;border-collapse:collapse;font-size:var(--font-size-base)}
+.table th{text-align:left;font-weight:500;color:var(--muted-foreground);border-bottom:1px solid var(--border);padding:6px 10px}
+.table td{border-bottom:1px solid var(--border);padding:6px 10px;vertical-align:top}
+.table-sm th,.table-sm td{padding:4px 8px}
+.table-responsive{overflow-x:auto}
+.text-end{text-align:right}.text-center{text-align:center}.text-nowrap{white-space:nowrap}
+.text-small{font-size:12px}.text-muted{color:var(--muted-foreground)}
+.form-label{display:block;font-size:12px;color:var(--muted-foreground);margin-bottom:4px}
+.form-select,.form-control{font:inherit;background:var(--card);color:var(--foreground);
+  border:1px solid var(--border);border-radius:8px;padding:6px 10px}
+.form-select-sm{padding:3px 8px;font-size:12px}
+.cursor-interaction{cursor:pointer}
+.tabular-nums{font-variant-numeric:tabular-nums}
+</style>
+</head>
+<body>
+<div id="v45views">
+  <style>
+    #v45views { font-size: var(--font-size-base); }
+    #v45views h1 { margin-bottom: 4px; }
+    #v45views .sub { color: var(--muted-foreground); margin-bottom: 10px; }
+    #v45views svg text { font-family: inherit; }
+    #v45views .svg-wrap { width: 100%; }
+    #v45views .svg-wrap svg { width: 100%; height: auto; display: block; }
+    #v45views .nt { fill: var(--foreground); font-size: 13px; font-weight: 500; }
+    #v45views .nd { fill: var(--muted-foreground); font-size: 11.5px; }
+    #v45views .el { fill: var(--muted-foreground); font-size: 11.5px; }
+    #v45views .e  { stroke: var(--border); stroke-width: 1.5; fill: none; }
+    #v45views .ed { stroke: var(--border); stroke-width: 1.5; fill: none; stroke-dasharray: 5 4; }
+    #v45views .ea { stroke: var(--viz-series-1); stroke-width: 1.5; fill: none; }
+    #v45views .grp { fill: var(--muted); fill-opacity: .45; stroke: var(--border); stroke-dasharray: 4 4; }
+    #v45views .gt { fill: var(--muted-foreground); font-size: 12px; font-weight: 500; }
+    #v45views .n-flow  { fill: var(--viz-series-1); fill-opacity: .10; stroke: var(--border); }
+    #v45views .n-dom   { fill: var(--viz-series-2); fill-opacity: .10; stroke: var(--border); }
+    #v45views .n-src   { fill: var(--viz-series-3); fill-opacity: .10; stroke: var(--border); }
+    #v45views .n-store { fill: var(--viz-series-4); fill-opacity: .10; stroke: var(--border); }
+    #v45views .n-ext   { fill: var(--muted); fill-opacity: .55; stroke: var(--border); stroke-dasharray: 5 4; }
+    #v45views .legend { display: flex; flex-wrap: wrap; gap: 12px 18px; margin: 8px 0 2px; color: var(--muted-foreground); }
+    #v45views .legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+    #v45views .tabpanel { padding-top: 12px; }
+    #v45views .col-head { font-weight: 500; margin-bottom: 2px; }
+    #v45views .col-sub { color: var(--muted-foreground); margin-bottom: 6px; }
+    #v45views .files { margin: 0; padding-left: 0; list-style: none; }
+    #v45views .files li { padding: 1.5px 0; }
+    #v45views .actor { display: inline-flex; align-items: center; gap: 4px; border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; color: var(--muted-foreground); }
+    #v45views .actor.on { border-color: transparent; background: var(--viz-series-1); fill-opacity: .15; color: var(--foreground); background-color: color-mix(in srgb, var(--viz-series-1) 16%, transparent); }
+    #v45views .step-item { text-align: left; width: 100%; background: none; border: none; padding: 6px 10px; border-radius: 8px; color: var(--muted-foreground); }
+    #v45views .step-item .t { font-weight: 500; color: inherit; }
+    #v45views .step-item.on { background: color-mix(in srgb, var(--viz-series-1) 14%, transparent); color: var(--foreground); }
+    #v45views .step-item.done .t { color: var(--foreground); }
+    #v45views .dots { display: flex; gap: 6px; margin: 8px 0; }
+    #v45views .dot { width: 9px; height: 9px; border-radius: 999px; background: var(--muted); border: none; padding: 0; }
+    #v45views .dot.on { background: var(--primary); }
+    #v45views .dot.done { background: color-mix(in srgb, var(--viz-series-1) 45%, var(--muted)); }
+  </style>
+
+  <h1>dsh-superagent · 4+1 架构视图</h1>
+  <div class="sub">研究原型：监听 GitHub（可选飞书）的主动编码智能体服务 · 依据 docs/000–008 与 src 源码梳理</div>
+  <div class="viz-row" style="gap:8px; margin-bottom:10px;">
+    <span class="viz-badge">服务运行中 · 127.0.0.1:3082</span>
+    <span class="viz-badge">状态：等待配置（setupPending）</span>
+    <span class="viz-badge">maxWorkers=3 · SQLite 单库</span>
+  </div>
+
+  <div class="nav nav-pills" role="tablist" aria-label="4+1 视图">
+    <button class="nav-link active" id="v45-tab-scen" role="tab" aria-controls="v45-panel-scen" aria-selected="true" type="button">场景 +1</button>
+    <button class="nav-link" id="v45-tab-log" role="tab" aria-controls="v45-panel-log" aria-selected="false" type="button">逻辑视图</button>
+    <button class="nav-link" id="v45-tab-proc" role="tab" aria-controls="v45-panel-proc" aria-selected="false" type="button">进程视图</button>
+    <button class="nav-link" id="v45-tab-dev" role="tab" aria-controls="v45-panel-dev" aria-selected="false" type="button">开发视图</button>
+    <button class="nav-link" id="v45-tab-phys" role="tab" aria-controls="v45-panel-phys" aria-selected="false" type="button">物理视图</button>
+  </div>
+
+  <!-- ================= 场景视图 (+1) ================= -->
+  <div id="v45-panel-scen" role="tabpanel" aria-labelledby="v45-tab-scen" class="tabpanel">
+    <div class="viz-controls">
+      <label class="form-label" for="v45-scen" style="margin:0;">场景</label>
+      <select class="form-select form-select-sm" id="v45-scen">
+        <option value="main">主场景：@提及 → 接单 → 交付 PR</option>
+        <option value="followup">订阅线程上的追问（复活工单）</option>
+        <option value="observe">主动观察模式（observe）</option>
+      </select>
+    </div>
+    <div class="viz-row" id="v45-actors" style="gap:8px; margin:10px 0;" aria-hidden="true"></div>
+    <div style="display:flex; gap:16px; align-items:flex-start; flex-wrap:wrap;">
+      <div style="flex:1 1 300px; min-width:260px;" id="v45-steps"></div>
+      <div style="flex:1.2 1 340px; min-width:280px;">
+        <h3 id="v45-step-title" style="margin-top:0;"></h3>
+        <div id="v45-step-desc" aria-live="polite" style="min-height:56px;"></div>
+        <div class="dots" id="v45-dots" role="group" aria-label="步骤"></div>
+        <div class="viz-row" style="gap:8px;">
+          <button class="btn btn-sm" id="v45-prev" type="button">上一步</button>
+          <button class="btn btn-sm btn-primary" id="v45-next" type="button">下一步</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= 逻辑视图 ================= -->
+  <div id="v45-panel-log" role="tabpanel" aria-labelledby="v45-tab-log" class="tabpanel" hidden>
+    <h3 style="margin-top:0;">领域模型：从 Trigger 到 Ticket 的主流程</h3>
+    <div class="svg-wrap"><svg viewBox="0 0 980 582" role="img" aria-label="dsh-superagent 逻辑视图：领域概念关系图">
+      <!-- 主流程 -->
+      <g>
+        <rect class="n-flow" x="16" y="34" width="118" height="60" rx="8" data-tooltip="事件流：GitHub 通知/Issue/PR/CI、飞书消息。持有读取位置，重启不重放；丢弃自己发的消息"/>
+        <text class="nt" x="75" y="58" text-anchor="middle">Source 来源</text>
+        <text class="nd" x="75" y="76" text-anchor="middle">GitHub / 飞书</text>
+
+        <rect class="n-flow" x="176" y="34" width="108" height="60" rx="8" data-tooltip="不可变事件，审计与幂等单元：接受两次也只建一个 Ticket"/>
+        <text class="nt" x="230" y="58" text-anchor="middle">Trigger 触发</text>
+        <text class="nd" x="230" y="76" text-anchor="middle">幂等 · 记录去向 Disposition</text>
+
+        <rect class="n-flow" x="326" y="34" width="112" height="60" rx="8" data-tooltip="时间序的 Trigger 集合；同一时间至多一个 Eval，期间到达的 Trigger 合并进下一批"/>
+        <text class="nt" x="382" y="58" text-anchor="middle">Thread 线程</text>
+        <text class="nd" x="382" y="76" text-anchor="middle">串行 Eval · 批合并</text>
+
+        <rect class="n-flow" x="480" y="34" width="130" height="60" rx="8" data-tooltip="两层判定：Gate 确定性准入（名单/点名/准入表/bot），Assessment 由主 Session 模型研判"/>
+        <text class="nt" x="545" y="54" text-anchor="middle">Eval 评估</text>
+        <text class="nd" x="545" y="70" text-anchor="middle">Gate 准入 + 研判</text>
+        <text class="nd" x="545" y="84" text-anchor="middle">超时重排 ×2 → unavailable</text>
+
+        <rect class="n-flow" x="654" y="34" width="118" height="60" rx="8"/>
+        <text class="nt" x="713" y="58" text-anchor="middle">Decision 决定</text>
+        <text class="nd" x="713" y="76" text-anchor="middle">accept/stop/ignore</text>
+
+        <rect class="n-flow" x="816" y="34" width="148" height="60" rx="8" data-tooltip="已授权的工作单元，阶段自持：person/* · working/* · idle · working → ended(merged/closed…)"/>
+        <text class="nt" x="890" y="54" text-anchor="middle">Ticket 工单</text>
+        <text class="nd" x="890" y="70" text-anchor="middle">唯一写入者 = Engine</text>
+        <text class="nd" x="890" y="84" text-anchor="middle">持有 Mandate / Inputs / follows</text>
+
+        <path class="ea" d="M134 64 H176" marker-end="url(#a1)"/>
+        <path class="ea" d="M284 64 H326" marker-end="url(#a1)"/>
+        <path class="ea" d="M438 64 H480" marker-end="url(#a1)"/>
+        <path class="ea" d="M610 64 H654" marker-end="url(#a1)"/>
+        <path class="ea" d="M772 64 H816" marker-end="url(#a1)"/>
+      </g>
+
+      <!-- 第二排：支撑概念 -->
+      <g>
+        <rect class="n-dom" x="176" y="176" width="180" height="60" rx="8" data-tooltip="Ticket×Thread 多对多：Trigger 扇出为上下文；人的消息直达 Ticket（不经 Eval），可复活已结束工单"/>
+        <text class="nt" x="266" y="200" text-anchor="middle">Subscription 订阅</text>
+        <text class="nd" x="266" y="218" text-anchor="middle">扇出上下文 · 追问复活</text>
+
+        <rect class="n-dom" x="430" y="176" width="150" height="60" rx="8" data-tooltip="Thread 的写侧：确认、回答、PR、评审回复；同一 Ticket 同一会话按序发送"/>
+        <text class="nt" x="505" y="200" text-anchor="middle">Channel 渠道</text>
+        <text class="nd" x="505" y="218" text-anchor="middle">评论 / 回复 / PR</text>
+
+        <rect class="n-dom" x="654" y="176" width="120" height="60" rx="8" data-tooltip="Ticket↔Executor 绑定：pending → running → ended，独立于 Ticket 生命周期"/>
+        <text class="nt" x="714" y="200" text-anchor="middle">Assignment 派工</text>
+        <text class="nd" x="714" y="218" text-anchor="middle">可中断 · 可重试</text>
+
+        <rect class="n-ext" x="816" y="176" width="148" height="60" rx="8"/>
+        <text class="nt" x="890" y="200" text-anchor="middle">Executor 执行器</text>
+        <text class="nd" x="890" y="218" text-anchor="middle">域外 · worker Session</text>
+
+        <path class="e" d="M300 94 V176" marker-end="url(#a2)"/>
+        <path class="e" d="M340 176 V138 H880 V94" marker-end="url(#a2)"/>
+        <text class="el" x="560" y="132">扇出 / 追问直达</text>
+        <path class="e" d="M845 94 V156 H714 V176" marker-end="url(#a2)"/>
+        <text class="el" x="764" y="150">派工</text>
+        <path class="e" d="M804 206 H816" marker-end="url(#a2)"/>
+        <path class="e" d="M830 94 V124 H505 V176" marker-end="url(#a2)"/>
+        <text class="el" x="600" y="118">工单持有渠道</text>
+        <path class="ed" d="M505 236 V260 H75 V94" marker-end="url(#a2)"/>
+        <text class="el" x="200" y="254">结果写回原对话</text>
+      </g>
+
+      <!-- 第三排：策略 / 引擎 / 存储 -->
+      <g>
+        <rect class="n-dom" x="480" y="318" width="180" height="66" rx="8" data-tooltip="版本化：评估规则 + 各 Source 允许名单/准入表/bot 表。变更通知受影响的活 Ticket，不撤销 Mandate"/>
+        <text class="nt" x="570" y="342" text-anchor="middle">Policy 策略</text>
+        <text class="nd" x="570" y="360" text-anchor="middle">版本哈希 · 变更重启在途 Eval</text>
+
+        <rect class="n-store" x="16" y="318" width="430" height="66" rx="8" data-tooltip="Engine 单向依赖五部件：Intake → Evals → Tickets → Assignments → Replies；全部方法同步、单事务"/>
+        <text class="nt" x="231" y="342" text-anchor="middle">Engine（src/core）五部件</text>
+        <text class="nd" x="231" y="360" text-anchor="middle">Intake → Evals → Tickets → Assignments → Replies</text>
+
+        <rect class="n-store" x="690" y="350" width="274" height="66" rx="8"/>
+        <text class="nt" x="827" y="374" text-anchor="middle">Store · orchestrator.sqlite</text>
+        <text class="nd" x="827" y="392" text-anchor="middle">trigger / thread / ticket / decision / effect / outbox / kv</text>
+
+        <path class="e" d="M640 318 V146 H600 V94" marker-end="url(#a2)"/>
+        <text class="el" x="648" y="260">gate 判定输入</text>
+        <path class="e" d="M660 340 H810 V94" marker-end="url(#a2)"/>
+        <text class="el" x="818" y="296">变更通知</text>
+        <path class="e" d="M446 340 H460 V432 H700 V416" marker-end="url(#a2)"/>
+        <text class="el" x="500" y="446">仓储读写</text>
+      </g>
+
+      <!-- 底部：域规则注释 -->
+      <g>
+        <rect class="grp" x="16" y="460" width="948" height="118" rx="8"/>
+        <text class="gt" x="32" y="486">关键不变量</text>
+        <text class="nd" x="32" y="508">· Mandate（授权）不可变：记录策略版本/范围/强度/匹配规则/发送者身份；只有人的 stop 或策略失效能撤回它，工单结束不撤回。</text>
+        <text class="nd" x="32" y="528">· 单一写入者：Trigger、Thread、Decision、Ticket、Assignment 只由 Engine 写；Source 只能经 bindThread / threadClosed 影响 Ticket。</text>
+        <text class="nd" x="32" y="548">· 幂等与审计：Trigger 一次存储多处引用（Disposition 去向）；同一 Trigger 重复接受只产生一个 Ticket。</text>
+        <text class="nd" x="32" y="568">· 域外执行：Executor（worker Session + 目录）在领域之外，经 Assignment 端口接入；报告（progress/waiting/ready/blocked/failed/dropped）是结构化事实。</text>
+      </g>
+      <defs>
+        <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--viz-series-1)"/></marker>
+        <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--muted-foreground)"/></marker>
+      </defs>
+    </svg></div>
+    <div class="legend">
+      <span><span class="sw" style="background:color-mix(in srgb, var(--viz-series-1) 25%, transparent);"></span>主流程概念</span>
+      <span><span class="sw" style="background:color-mix(in srgb, var(--viz-series-2) 25%, transparent);"></span>支撑概念</span>
+      <span><span class="sw" style="background:color-mix(in srgb, var(--viz-series-4) 25%, transparent);"></span>引擎与存储</span>
+      <span><span class="sw" style="border:1px dashed var(--border);"></span>领域边界外</span>
+    </div>
+  </div>
+
+  <!-- ================= 进程视图 ================= -->
+  <div id="v45-panel-proc" role="tabpanel" aria-labelledby="v45-tab-proc" class="tabpanel" hidden>
+    <h3 style="margin-top:0;">单进程运行时：循环、副作用队列与两类 Session</h3>
+    <div class="svg-wrap"><svg viewBox="0 0 980 620" role="img" aria-label="dsh-superagent 进程视图：运行时组件与并发">
+      <rect class="grp" x="10" y="10" width="650" height="600" rx="10"/>
+      <text class="gt" x="26" y="32">DSH profile「superagent」进程 · 127.0.0.1:3082</text>
+
+      <rect class="n-store" x="30" y="44" width="610" height="52" rx="8" data-tooltip="组合根：锁 stateDir、打开 Store、跑 Setup、注册 HTTP 路由与 Session 钩子；own 启动/优雅停机"/>
+      <text class="nt" x="335" y="66" text-anchor="middle">Runtime 组合根（src/app/runtime.ts）</text>
+      <text class="nd" x="335" y="84" text-anchor="middle">Setup 账号/环境探测 · 管理路由 /orchestrator/api</text>
+
+      <rect class="n-flow" x="30" y="118" width="188" height="70" rx="8"/>
+      <text class="nt" x="124" y="142" text-anchor="middle">Passes 循环</text>
+      <text class="nd" x="124" y="158" text-anchor="middle">每 2 秒一轮（串行）</text>
+      <text class="nd" x="124" y="174" text-anchor="middle">到期 effects → evaluateDue</text>
+
+      <rect class="n-flow" x="244" y="118" width="196" height="70" rx="8" data-tooltip="持久副作用队列：提交后才开始执行；同类按 key 合并，失败指数退避"/>
+      <text class="nt" x="342" y="142" text-anchor="middle">Effects 持久队列</text>
+      <text class="nd" x="342" y="158" text-anchor="middle">6 类 · 每类并发上限</text>
+      <text class="nd" x="342" y="174" text-anchor="middle">失败退避重试 · 健康条目</text>
+
+      <rect class="n-flow" x="466" y="118" width="174" height="70" rx="8"/>
+      <text class="nt" x="553" y="142" text-anchor="middle">Outbox 发件箱</text>
+      <text class="nd" x="553" y="158" text-anchor="middle">回执 + 按序发送</text>
+      <text class="nd" x="553" y="174" text-anchor="middle">5s→300s 退避</text>
+
+      <rect class="n-dom" x="30" y="224" width="188" height="98" rx="8" data-tooltip="dsh-superagent-router 预设：5 秒 shell/等待上限，14 个 orchestrator_* 工具，研判候选并路由"/>
+      <text class="nt" x="124" y="248" text-anchor="middle">主 Session（路由）</text>
+      <text class="nd" x="124" y="266" text-anchor="middle">评估候选 · 路由 · 回复</text>
+      <text class="nd" x="124" y="282" text-anchor="middle">relay/notice 注入回合</text>
+      <text class="nd" x="124" y="306" text-anchor="middle">读已订阅 Thread</text>
+
+      <rect class="n-dom" x="30" y="348" width="188" height="112" rx="8" data-tooltip="每工单一个 worker-&lt;ticket&gt; Session 与目录；prepare 命令限时 10 分钟；后台任务 30 分钟上限"/>
+      <text class="nt" x="124" y="370" text-anchor="middle">Executor Sessions</text>
+      <text class="nd" x="124" y="386" text-anchor="middle">worker-&lt;ticket&gt; 每工单一个</text>
+      <text class="nd" x="124" y="402" text-anchor="middle">并发 = maxWorkers(默认 3)</text>
+      <text class="nd" x="124" y="418" text-anchor="middle">+1 人消息额外槽位</text>
+      <text class="nd" x="124" y="440" text-anchor="middle">Shell 5s 转后台 · 作业唤醒</text>
+
+      <rect class="n-src" x="244" y="224" width="396" height="64" rx="8" data-tooltip="每轮：通知（Issue/PR/评论/CI）→ Trigger；订阅线程轮询；开放工单的 PR 与 CI 指纹"/>
+      <text class="nt" x="442" y="248" text-anchor="middle">GitHub Source 轮询</text>
+      <text class="nd" x="442" y="266" text-anchor="middle">通知 → Trigger · 订阅线程 · PR/CI 观察 · 读位置持久</text>
+
+      <rect class="n-src" x="244" y="306" width="396" height="64" rx="8" data-tooltip="长连接事件消费 + 历史恢复 + 订阅话题轮询；默认只读 @机器人 的消息"/>
+      <text class="nt" x="442" y="330" text-anchor="middle">Feishu Source（可选）</text>
+      <text class="nd" x="442" y="348" text-anchor="middle">事件消费 · 历史恢复 · 话题轮询</text>
+
+      <rect class="n-store" x="244" y="390" width="396" height="70" rx="8"/>
+      <text class="nt" x="442" y="414" text-anchor="middle">HealthBoard 健康板</text>
+      <text class="nd" x="442" y="432" text-anchor="middle">每部件一条目（runtime/models/evals/…）· 连续 3 次失败报 error</text>
+
+      <rect class="n-store" x="30" y="486" width="610" height="60" rx="8"/>
+      <text class="nt" x="335" y="508" text-anchor="middle">Store · orchestrator.sqlite（node:sqlite + 目录锁）</text>
+      <text class="nd" x="335" y="526" text-anchor="middle">全部状态落库：命令先落库提交、事务后执行副作用（stored work）</text>
+
+      <rect class="n-ext" x="690" y="44" width="272" height="56" rx="8"/>
+      <text class="nt" x="826" y="66" text-anchor="middle">浏览器 · Web 面板</text>
+      <text class="nd" x="826" y="84" text-anchor="middle">同源 /orchestrator/api · 侧栏 Superagent</text>
+
+      <rect class="n-ext" x="690" y="128" width="272" height="56" rx="8"/>
+      <text class="nt" x="826" y="150" text-anchor="middle">模型 Provider</text>
+      <text class="nd" x="826" y="168" text-anchor="middle">主/执行器可分模型 · 408/429/5xx 退避 3 次</text>
+
+      <rect class="n-ext" x="690" y="212" width="272" height="64" rx="8"/>
+      <text class="nt" x="826" y="236" text-anchor="middle">github.com</text>
+      <text class="nd" x="826" y="254" text-anchor="middle">agent 账号 gh CLI · git push/worktree</text>
+
+      <rect class="n-ext" x="690" y="300" width="272" height="56" rx="8"/>
+      <text class="nt" x="826" y="322" text-anchor="middle">飞书开放平台</text>
+      <text class="nd" x="826" y="340" text-anchor="middle">bot 应用 lark-cli（仅 bot 身份）</text>
+
+      <rect class="n-ext" x="690" y="380" width="272" height="64" rx="8"/>
+      <text class="nt" x="826" y="402" text-anchor="middle">Ticket 工作目录</text>
+      <text class="nd" x="826" y="420" text-anchor="middle">stateDir/work/&lt;短名&gt; · prepare 建 worktree</text>
+      <text class="nd" x="826" y="436" text-anchor="middle">worker-bin 垫片 + 隔离 gitconfig</text>
+
+      <path class="e" d="M124 96 V118" marker-end="url(#a2)"/>
+      <path class="e" d="M124 188 V224" marker-end="url(#a2)"/>
+      <path class="e" d="M218 153 H244" marker-end="url(#a2)"/>
+      <path class="e" d="M440 153 H466" marker-end="url(#a2)"/>
+      <path class="e" d="M553 188 V224" marker-end="url(#a2)"/>
+      <path class="e" d="M244 130 H225 V250 H218" marker-end="url(#a2)"/>
+      <text class="el" x="248" y="215">assessment / relay 送入回合</text>
+      <path class="e" d="M260 188 V210 H236 V400 H218" marker-end="url(#a2)"/>
+      <text class="el" x="124" y="340" text-anchor="middle">launch / delivery 派工与投递</text>
+      <path class="ed" d="M553 188 V298 H676 V244 H690" marker-end="url(#a2)"/>
+      <text class="el" x="560" y="294">reply 经渠道发出</text>
+      <path class="ed" d="M640 250 H690" marker-end="url(#a2)"/>
+      <path class="ed" d="M640 338 H690" marker-end="url(#a2)"/>
+      <path class="ed" d="M660 156 H690" marker-end="url(#a2)"/>
+      <text class="el" x="662" y="150">HTTPS</text>
+      <path class="ed" d="M690 72 H640" marker-end="url(#a2)"/>
+      <path class="ed" d="M218 434 H231 V470 H676 V410 H690" marker-end="url(#a2)"/>
+      <path class="e" d="M124 460 V486" marker-end="url(#a2)"/>
+      <path class="e" d="M442 460 V486" marker-end="url(#a2)"/>
+    </svg></div>
+
+    <h3>Effects 队列：六类副作用</h3>
+    <div class="table-responsive"><table class="table table-sm">
+      <thead><tr><th>类别</th><th>做什么</th><th>并发</th><th>重试/退避</th></tr></thead>
+      <tbody>
+        <tr><td><code>assessment</code></td><td>把评估候选卡送入主 Session 回合（送达即启动截止计时）</td><td class="text-nowrap">4</td><td>2s 起倍增至 60s</td></tr>
+        <tr><td><code>launch</code></td><td>启动派工：prepare 命令 → worker Session → 派工消息</td><td class="text-nowrap">空闲槽位数</td><td>瞬时故障 5s→300s ×3；prepare 失败即工单失败</td></tr>
+        <tr><td><code>delivery</code></td><td>把等待中的 Input 按序投给运行中的 Assignment</td><td class="text-nowrap">4</td><td>2s 起倍增至 60s（失败显示在工单上）</td></tr>
+        <tr><td><code>relay</code></td><td>worker 报告/提问、人的追问 → 主 Session 回合（保序）</td><td class="text-nowrap">1</td><td>2s 起倍增至 60s</td></tr>
+        <tr><td><code>notice</code></td><td>不打扰式通知注入主 Session（保序）</td><td class="text-nowrap">1</td><td>2s 起倍增至 60s</td></tr>
+        <tr><td><code>reply</code></td><td>经 Source 渠道发出 Outbox 消息（同工单同会话保序）</td><td class="text-nowrap">1</td><td>5s→300s；渠道消失则丢弃留痕</td></tr>
+      </tbody>
+    </table></div>
+    <div class="text-small" style="color:var(--muted-foreground);">暂停（pause）：停止派工、新评估、超时与投递，但 Source 继续记录 Trigger；重启后按存储恢复——中断的 Assignment 带恢复备注续跑，最老的 Ticket 优先。</div>
+  </div>
+
+  <!-- ================= 开发视图 ================= -->
+  <div id="v45-panel-dev" role="tabpanel" aria-labelledby="v45-tab-dev" class="tabpanel" hidden>
+    <h3 style="margin-top:0;">模块分层与依赖规则</h3>
+    <div class="svg-wrap"><svg viewBox="0 0 980 196" role="img" aria-label="开发视图：core、app 与各适配层的依赖方向">
+      <rect class="n-store" x="16" y="66" width="180" height="62" rx="8"/>
+      <text class="nt" x="106" y="90" text-anchor="middle">src/core 纯领域</text>
+      <text class="nd" x="106" y="108" text-anchor="middle">无 I/O · 除 node 哈希不依赖外部</text>
+
+      <rect class="n-flow" x="280" y="66" width="180" height="62" rx="8"/>
+      <text class="nt" x="370" y="90" text-anchor="middle">src/app 运行时粘合</text>
+      <text class="nd" x="370" y="108" text-anchor="middle">组合根 · 队列 · 会话 · 视图</text>
+
+      <rect class="n-dom" x="560" y="12" width="190" height="40" rx="8"/><text class="nt" x="655" y="31" text-anchor="middle">src/sources</text><text class="nd" x="655" y="46" text-anchor="middle">GitHub / 飞书 插件</text>
+      <rect class="n-dom" x="560" y="58" width="190" height="40" rx="8"/><text class="nt" x="655" y="77" text-anchor="middle">src/executor</text><text class="nd" x="655" y="92" text-anchor="middle">DshExecutor + 后台作业</text>
+      <rect class="n-dom" x="560" y="104" width="190" height="40" rx="8"/><text class="nt" x="655" y="123" text-anchor="middle">src/infra</text><text class="nd" x="655" y="138" text-anchor="middle">CLI 传输 · 环境 · 健康</text>
+      <rect class="n-dom" x="560" y="150" width="190" height="40" rx="8"/><text class="nt" x="655" y="169" text-anchor="middle">src/client</text><text class="nd" x="655" y="184" text-anchor="middle">React 面板（仅引类型）</text>
+
+      <path class="e" d="M280 97 H196" marker-end="url(#a2)"/>
+      <text class="el" x="206" y="90">端口接口</text>
+      <path class="e" d="M560 32 C 500 32, 480 80, 460 92" marker-end="url(#a2)"/>
+      <path class="e" d="M560 78 H460" marker-end="url(#a2)"/>
+      <path class="e" d="M560 124 C 500 124, 480 104, 460 100" marker-end="url(#a2)"/>
+      <path class="ed" d="M560 170 C 480 170, 470 112, 460 98" marker-end="url(#a2)"/>
+      <text class="el" x="470" y="176">仅类型 + 少量纯值</text>
+      <text class="nd" x="770" y="90">规则：core 不 import 外部；</text>
+      <text class="nd" x="770" y="108">sources 不 import app；面板无环。</text>
+      <text class="nd" x="770" y="126">每类状态一个写入者。</text>
+    </svg></div>
+
+    <div class="viz-grid" style="margin-top:10px;">
+      <div>
+        <div class="col-head"><code>src/core</code>（17 文件）</div>
+        <div class="col-sub">领域规则，可内存测试</div>
+        <ul class="files text-small">
+          <li><code>engine.ts</code> 唯一入口 · 角色化 Pick</li>
+          <li><code>intake / evals / tickets / assignments / replies</code></li>
+          <li><code>model.ts</code> 类型化 Ticket · <code>stage.ts</code> 阶段</li>
+          <li><code>ports.ts</code> 六个端口 · <code>memory.ts</code> 内存仓储</li>
+        </ul>
+      </div>
+      <div>
+        <div class="col-head"><code>src/app</code>（30 文件）</div>
+        <div class="col-sub">运行时与粘合层</div>
+        <ul class="files text-small">
+          <li><code>runtime.ts</code> 组合根 · <code>passes / effects / outbox</code></li>
+          <li><code>sessions.ts</code> 双角色会话 · <code>assessment.ts</code> 主评估</li>
+          <li><code>store.ts</code> SQLite · <code>views/</code> 面板视图 · <code>tools/</code> 工具</li>
+          <li><code>prompts.ts / settings.ts / setup.ts</code></li>
+        </ul>
+      </div>
+      <div>
+        <div class="col-head"><code>src/sources</code>（14 文件）</div>
+        <div class="col-sub">Source 插件协议 + 两个实现</div>
+        <ul class="files text-small">
+          <li><code>kind.ts</code> SourceKind 协议 · <code>registry.ts</code> 注册表</li>
+          <li><code>github*.ts</code> 通知/触发/PR 规则/渠道/读取</li>
+          <li><code>feishu*.ts</code> 事件/恢复/话题/图片</li>
+          <li><code>poll.ts</code> 共享轮询 · <code>admission-context.ts</code></li>
+        </ul>
+      </div>
+      <div>
+        <div class="col-head"><code>src/executor · infra · client</code></div>
+        <div class="col-sub">执行适配 / 基础设施 / 面板</div>
+        <ul class="files text-small">
+          <li><code>executor/dsh.ts</code> worker 槽位 · <code>background.ts</code> 作业</li>
+          <li><code>infra/commands.ts</code> CLI 传输 · <code>environment.ts</code> 垫片</li>
+          <li><code>client/*.tsx</code> React 面板 + 双语文案</li>
+          <li>根级：<code>policy / deployment / setup / kv / admission</code></li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="viz-row" style="gap:8px; margin-top:12px;">
+      <span class="viz-badge">tsdown 构建 → lib/：index · github-watch · feishu-watch · client</span>
+      <span class="viz-badge">60 个测试文件（vitest）</span>
+      <span class="viz-badge">pnpm check = typecheck + test + build</span>
+      <span class="viz-badge">prompts/ 11 个内置提示 · skills/ 2 个 Source 技能</span>
+    </div>
+  </div>
+
+  <!-- ================= 物理视图 ================= -->
+  <div id="v45-panel-phys" role="tabpanel" aria-labelledby="v45-tab-phys" class="tabpanel" hidden>
+    <h3 style="margin-top:0;">部署拓扑：一台操作员机器 + 三个外部系统</h3>
+    <div class="svg-wrap"><svg viewBox="0 0 980 540" role="img" aria-label="物理视图：操作员机器、GitHub、飞书与模型服务">
+      <rect class="grp" x="10" y="10" width="640" height="520" rx="10"/>
+      <text class="gt" x="26" y="32">操作员机器（常规：Linux + tmux 会话 dsh-superagent · 本机：Windows 后台进程）</text>
+
+      <rect class="n-dom" x="30" y="48" width="270" height="60" rx="8"/>
+      <text class="nt" x="165" y="72" text-anchor="middle">浏览器 · Web 面板</text>
+      <text class="nd" x="165" y="90" text-anchor="middle">127.0.0.1:3082 · 侧栏「Superagent」</text>
+
+      <rect class="n-flow" x="30" y="140" width="270" height="104" rx="8" data-tooltip="专用 DSH profile，独立于操作员日常 profile，便于独立重启与升级"/>
+      <text class="nt" x="165" y="164" text-anchor="middle">DSH profile「superagent」</text>
+      <text class="nd" x="165" y="182" text-anchor="middle">webserver 127.0.0.1:3082</text>
+      <text class="nd" x="165" y="198" text-anchor="middle">主 Session + Executor Sessions</text>
+      <text class="nd" x="165" y="214" text-anchor="middle">worker/router 两个预设</text>
+
+      <rect class="n-store" x="340" y="48" width="290" height="196" rx="8"/>
+      <text class="nt" x="485" y="72" text-anchor="middle">stateDir 状态目录</text>
+      <text class="nd" x="485" y="92" text-anchor="middle">orchestrator.sqlite（唯一写入者 Store）</text>
+      <text class="nd" x="485" y="110" text-anchor="middle">worker-bin/ 命令垫片（PATH 首位）</text>
+      <text class="nd" x="485" y="128" text-anchor="middle">worker-gitconfig（隔离凭据）</text>
+      <text class="nd" x="485" y="146" text-anchor="middle">work/&lt;短名&gt;/ 每工单工作目录</text>
+      <text class="nd" x="485" y="170" text-anchor="middle">目录锁：一库一进程</text>
+      <text class="nd" x="485" y="188" text-anchor="middle">升级前备份 orchestrator.sqlite</text>
+      <text class="nd" x="485" y="214" text-anchor="middle">本机：C:\Users\13423\.dsh\state\superagent</text>
+
+      <rect class="n-dom" x="30" y="280" width="270" height="64" rx="8"/>
+      <text class="nt" x="165" y="304" text-anchor="middle">仓库本地克隆</text>
+      <text class="nd" x="165" y="322" text-anchor="middle">prepare：git fetch + worktree 到工单目录</text>
+
+      <rect class="n-dom" x="340" y="280" width="290" height="64" rx="8"/>
+      <text class="nt" x="485" y="304" text-anchor="middle">包装 CLI（凭据边界）</text>
+      <text class="nd" x="485" y="322" text-anchor="middle">gh-agent（独立 GH_CONFIG_DIR）· lark-bot</text>
+
+      <rect class="n-store" x="30" y="380" width="600" height="60" rx="8"/>
+      <text class="nt" x="330" y="404" text-anchor="middle">监控与恢复</text>
+      <text class="nd" x="330" y="422" text-anchor="middle">scripts/dsh-superagent start/status/stop（tmux）· 操作员 profile 里的整点巡检自动拉起</text>
+
+      <rect class="n-ext" x="690" y="48" width="272" height="96" rx="8"/>
+      <text class="nt" x="826" y="76" text-anchor="middle">github.com</text>
+      <text class="nd" x="826" y="96" text-anchor="middle">目标仓库（agent 账号具写权限）</text>
+      <text class="nd" x="826" y="114" text-anchor="middle">读通知 · 写评论/分支/PR</text>
+
+      <rect class="n-ext" x="690" y="180" width="272" height="80" rx="8"/>
+      <text class="nt" x="826" y="208" text-anchor="middle">飞书开放平台（可选）</text>
+      <text class="nd" x="826" y="228" text-anchor="middle">自建应用 + bot · 仅 bot 身份</text>
+
+      <rect class="n-ext" x="690" y="296" width="272" height="72" rx="8"/>
+      <text class="nt" x="826" y="322" text-anchor="middle">模型 Provider</text>
+      <text class="nd" x="826" y="342" text-anchor="middle">profile 默认模型 / eval、executor 可覆盖</text>
+
+      <rect class="n-ext" x="690" y="404" width="272" height="72" rx="8"/>
+      <text class="nt" x="826" y="428" text-anchor="middle">操作员 / 团队</text>
+      <text class="nd" x="826" y="448" text-anchor="middle">@agent 发起工作 · 审阅合并 PR</text>
+
+      <path class="e" d="M165 108 V140" marker-end="url(#a2)"/>
+      <text class="el" x="172" y="128">HTTP 同源校验</text>
+      <path class="e" d="M300 192 H340" marker-end="url(#a2)"/>
+      <path class="e" d="M300 312 C 320 312, 326 240, 340 244" marker-end="url(#a2)"/>
+      <text class="el" x="236" y="266">worktree</text>
+      <path class="ed" d="M630 296 C 676 286, 682 160, 690 116" marker-end="url(#a2)"/>
+      <text class="el" x="636" y="180">gh / git</text>
+      <path class="ed" d="M630 312 C 668 306, 674 262, 690 236" marker-end="url(#a2)"/>
+      <text class="el" x="634" y="286">lark-cli</text>
+    </svg></div>
+    <div class="text-small" style="color:var(--muted-foreground);">本机实况：dsh 0.2.1-rc.3 · 插件以 link: 安装 · stateDir 因校验限制写作 POSIX 形式（/Users/…，进程在 C: 盘启动即解析到 C:\Users\…）· 服务在 3082 端口运行、等待配置 GitHub 仓库与 agent 账号。</div>
+  </div>
+
+  <script>
+    (function () {
+      var root = document.getElementById('v45views');
+      if (!root) return;
+
+      var SCEN = {
+        main: { steps: [
+          { t: '请求', a: ['gh'], d: '允许名单中的成员在 GitHub Issue 里评论 @agent，要求修复一处文案拼写（匹配策略里的 copy 规则）。' },
+          { t: '触发', a: ['gh', 'src'], d: 'GitHub Source 下一轮轮询读到通知，翻译为 Trigger；Engine.receive 幂等存储，并把它归入 Issue 对应的 Thread。' },
+          { t: '准入', a: ['src'], d: 'Gate 确定性准入：发送者在允许名单且点名了 agent，强度记为 explicit；Trigger 进入该 Thread 的评估队列。' },
+          { t: '研判', a: ['ms'], d: 'assessment 效应把候选卡送入主 Session 的当前回合；主 Session 结合线程窗口与策略研判，用 orchestrator_route 决定 accept。' },
+          { t: '建单', a: ['src', 'ob'], d: 'Engine 在单个事务里创建 Ticket + Mandate（记录策略版本/范围/强度）+ 首个 Assignment + Subscriptions；Outbox 在原对话发出确认评论。' },
+          { t: '准备与启动', a: ['ex', 'gh'], d: 'launch 效应先跑 prepare 命令：git fetch + worktree 为工单建独立目录（限时 10 分钟），再启动 worker-<ticket> Session 并投递派工消息。' },
+          { t: '执行', a: ['ex'], d: 'Executor 在自己的目录里编码、跑测试，用 orchestrator_report 上报 progress；完成后报 ready，并按 PR 规则认领自己开的 PR。' },
+          { t: '跟进', a: ['gh', 'src'], d: 'Ticket 订阅自己的 PR；人的后续评论经订阅扇出直达 Executor（不再评估）。新消息可占用 +1 额外槽位，不会被排队阻塞。' },
+          { t: '收尾', a: ['gh', 'ob'], d: '审阅通过、PR 合并 → threadClosed → followsDone：Ticket 以 merged 结束；Outbox 在聊天渠道发一条最终通知。' },
+          { t: '全程可见', a: ['ui'], d: '面板 Overview 从头到尾展示：阶段由 Queued → Working → Awaiting review → 已结束；管理 API /orchestrator/api/state 报告各部件健康。' }
+        ] },
+        followup: { steps: [
+          { t: '追问', a: ['gh'], d: '一个已结束（merged）工单的 PR 线程上，有人再次留言，要求补充一处小改动。' },
+          { t: '订阅仍在', a: ['src'], d: '工单结束后 Subscriptions 保留：Trigger 扇出到该 Ticket；因为是人的消息，直达工单，不进入 Eval。' },
+          { t: '复活', a: ['src'], d: 'Engine 用当前策略重新校验原 Mandate：仍成立就立即复活工单——没有新的决定（Decision），也不打扰主 Session。' },
+          { t: '投递', a: ['src', 'ex'], d: 'delivery 效应把消息作为 Input 投给原 Executor Session（目录、分支、PR 都还在）；人消息可用额外槽位立即唤醒。' },
+          { t: '再收尾', a: ['ex', 'gh'], d: 'Executor 完成补充再报 ready；PR 再次合并或关闭后，工单再次结束。' },
+          { t: '超出范围', a: ['ex', 'ms'], d: '若请求超出该工单范围，Executor 用 orchestrator_trigger_handback 交回：消息重新排队 Eval，由主 Session 决定路由到哪个工单。' }
+        ] },
+        observe: { steps: [
+          { t: '打开观察', a: ['src'], d: '在 Source 设置里打开 observeIssues / observePulls 等开关：仓库里每个新 Issue、PR、评论和默认分支 CI 都会进入系统。' },
+          { t: '推断候选', a: ['src'], d: '非点名、发送者也不在允许名单的消息，按准入表形成推断候选（inferred），例如 CI 变红暗示的修复机会。' },
+          { t: '只记录', a: ['ms'], d: 'observe 接受模式下，主 Session 的接受只记录为「would accept」，不建工单——先观察判断质量。' },
+          { t: '切 auto', a: ['ms', 'src'], d: '切到 auto 模式且匹配规则启用后，接受才真正创建 Ticket；Mandate 记录 observation 依据，授权范围收窄。' },
+          { t: '可审计', a: ['ui'], d: '所有去向（filtered / ignored / would-accept / accepted）都保留在 Decision 列表，面板可查、可重新评估（reevaluate）。' }
+        ] }
+      };
+      var ACTORS = [
+        { k: 'gh', label: 'GitHub / 外部' },
+        { k: 'src', label: 'Source + Engine' },
+        { k: 'ms', label: '主 Session' },
+        { k: 'ex', label: '执行器' },
+        { k: 'ob', label: 'Outbox 回写' },
+        { k: 'ui', label: '面板' }
+      ];
+
+      var sel = document.getElementById('v45-scen');
+      var stepsEl = document.getElementById('v45-steps');
+      var dotsEl = document.getElementById('v45-dots');
+      var actorsEl = document.getElementById('v45-actors');
+      var titleEl = document.getElementById('v45-step-title');
+      var descEl = document.getElementById('v45-step-desc');
+      var prevBtn = document.getElementById('v45-prev');
+      var nextBtn = document.getElementById('v45-next');
+      var scen = 'main', idx = 0;
+
+      ACTORS.forEach(function (a) {
+        var s = document.createElement('span');
+        s.className = 'actor'; s.dataset.k = a.k; s.textContent = a.label;
+        actorsEl.appendChild(s);
+      });
+
+      function save() {
+        if (window.zcode && window.zcode.setWidgetState) {
+          window.zcode.setWidgetState({ modelContent: { view: '4plus1', scenario: scen, step: idx } }).catch(function () {});
+        }
+      }
+      function render() {
+        var steps = SCEN[scen].steps;
+        stepsEl.innerHTML = '';
+        steps.forEach(function (s, i) {
+          var b = document.createElement('button');
+          b.type = 'button';
+          b.className = 'step-item cursor-interaction' + (i === idx ? ' on' : (i < idx ? ' done' : ''));
+          b.innerHTML = '<span class="t">' + (i + 1) + ' · ' + s.t + '</span>';
+          b.addEventListener('click', function () { idx = i; render(); save(); });
+          stepsEl.appendChild(b);
+        });
+        dotsEl.innerHTML = '';
+        steps.forEach(function (s, i) {
+          var d = document.createElement('button');
+          d.type = 'button';
+          d.className = 'dot cursor-interaction' + (i === idx ? ' on' : (i < idx ? ' done' : ''));
+          d.setAttribute('aria-label', '第 ' + (i + 1) + ' 步：' + s.t);
+          d.addEventListener('click', function () { idx = i; render(); save(); });
+          dotsEl.appendChild(d);
+        });
+        titleEl.textContent = (idx + 1) + ' / ' + steps.length + ' · ' + steps[idx].t;
+        descEl.textContent = steps[idx].d;
+        var active = steps[idx].a;
+        Array.prototype.forEach.call(actorsEl.children, function (el) {
+          el.classList.toggle('on', active.indexOf(el.dataset.k) >= 0);
+        });
+        prevBtn.disabled = idx === 0;
+        nextBtn.disabled = idx === steps.length - 1;
+      }
+      sel.addEventListener('change', function () { scen = sel.value; idx = 0; render(); save(); });
+      prevBtn.addEventListener('click', function () { if (idx > 0) { idx--; render(); save(); } });
+      nextBtn.addEventListener('click', function () { if (idx < SCEN[scen].steps.length - 1) { idx++; render(); save(); } });
+
+      try {
+        var saved = window.zcode && window.zcode.widgetState && window.zcode.widgetState.modelContent;
+        if (saved && saved.view === '4plus1' && SCEN[saved.scenario]) {
+          scen = saved.scenario; sel.value = scen;
+          idx = Math.min(Math.max(saved.step | 0, 0), SCEN[scen].steps.length - 1);
+        }
+      } catch (e) { }
+      render();
+    })();
+  </script>
+</div>
+
+<script>
+document.querySelectorAll('.nav-pills[role=tablist]').forEach(function (list) {
+  var links = Array.prototype.slice.call(list.querySelectorAll('.nav-link[role=tab]'));
+  links.forEach(function (link) {
+    link.addEventListener('click', function () {
+      links.forEach(function (l) {
+        var on = l === link;
+        l.classList.toggle('active', on);
+        l.setAttribute('aria-selected', on ? 'true' : 'false');
+        var panel = document.getElementById(l.getAttribute('aria-controls'));
+        if (panel) panel.hidden = !on;
+      });
+    });
+    if (!link.getAttribute('id')) link.setAttribute('id', 'tab-' + Math.random().toString(36).slice(2));
+  });
+});
+document.querySelectorAll('[data-tooltip]').forEach(function (el) {
+  el.setAttribute('title', el.getAttribute('data-tooltip'));
+});
+</script>
+</body>
+</html>
