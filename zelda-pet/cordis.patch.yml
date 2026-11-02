@@ -1,0 +1,5 @@
+# The bundle layer: the pet is client-only, so the host entry is a no-op whose only job is to make the
+# composed tree carry the bundle, which is what makes the web app serve its client.js.
+- insert:
+    - id: dsh-zelda-pet
+      name: dsh-zelda-pet
