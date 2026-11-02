@@ -1,0 +1,28 @@
+{
+  "tasks": [
+    {
+      "id": "heart",
+      "instruction": "双击宠物时，在它上方画出一颗漂起的红色爱心并淡出：在 src/pet.tsx 中新增一个 heart 状态与 SVG 心形（class 名必须是 zpet-heart），配套 CSS keyframes 必须命名为 zpet-heart（漂起+淡出，约1.2秒），双击触发。不要改动其他行为。",
+      "cwd": "E:/coding/deepseek-super-agent/dsh-superagent-prototype-rsi/zelda-pet",
+      "check": "node probe/check-heart.cjs"
+    },
+    {
+      "id": "shadow",
+      "instruction": "宠物跳跃时脚下应有影子随高度缩放：在 src/pet.tsx 中新增一个椭圆影子元素（class 名必须是 zpet-shadow），配套 CSS keyframes 必须命名为 zpet-shadow-scale（跳起时变小变淡，落地恢复），挂在现有 jump 动画节奏上。不要改动其他行为。",
+      "cwd": "E:/coding/deepseek-super-agent/dsh-superagent-prototype-rsi/zelda-pet",
+      "check": "node probe/check-shadow.cjs"
+    },
+    {
+      "id": "log",
+      "instruction": "给宠物加台词历史：宠物每次说话（say 函数被调用）都记录下来；新增一个 class 名为 zpet-log 的悬浮小面板，展示最近 5 条台词（新的在上），挂在宠物上方。不要改动其他行为。",
+      "cwd": "E:/coding/deepseek-super-agent/dsh-superagent-prototype-rsi/zelda-pet",
+      "check": "node probe/check-log.cjs"
+    },
+    {
+      "id": "glow",
+      "instruction": "给宠物加夜间光晕：夜间（isNight 为 true，即 mood 为 sleep 或 idle 且 isNight）时宠物周围显示柔和的绿色光晕。要求：光晕元素的 class 必须是 zpet-glow，放在宠物 SVG 之后；CSS 中必须出现 .zpet-night .zpet-glow 这样的组合选择器控制透明度（夜间可见、白天透明），并带 transition 过渡。不要改动其他行为。",
+      "cwd": "E:/coding/deepseek-super-agent/dsh-superagent-prototype-rsi/zelda-pet",
+      "check": "node probe/check-glow.cjs"
+    }
+  ]
+}

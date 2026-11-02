@@ -24,6 +24,18 @@ export interface HarnessHead { revision: number; config: PromptConfig; defaults:
 export interface Rollout {
   id: string; title: string; stage: string; outcome?: string; rules: string[]; sender?: string
   reports: { state: string; summary: string; at?: string }[]
+  /** A rollout read from a local evidence file keeps its markdown; rendering uses it verbatim. */
+  raw?: string
+}
+/** Reads rollouts from a local evidence directory of `*.md` files — the offline path when no instance holds tickets. */
+export async function readRolloutDir(directory: string): Promise<Rollout[]> {
+  const names = (await readdir(directory).catch(() => [])).filter(name => name.endsWith('.md') && name !== 'INDEX.md').sort()
+  const rollouts: Rollout[] = []
+  for (const name of names) {
+    const id = name.replace(/\.md$/, '')
+    rollouts.push({ id, title: id, stage: 'ended', rules: [], sender: undefined, reports: [], raw: await readFile(join(directory, name), 'utf8') })
+  }
+  return rollouts
 }
 /** The parts of a ticket detail page an evidence rollout renders. */
 interface TicketDetail {
@@ -61,6 +73,7 @@ export function toRollout(id: string, detail: TicketDetail): Rollout {
 }
 /** The text of one rollout, in the shared [REPORT]/[END] shape the sessions read. */
 export function renderRollout(rollout: Rollout): string {
+  if (rollout.raw !== undefined) return rollout.raw
   return [
     `# rollout ${rollout.id} — ${rollout.title}`,
     `stage: ${rollout.stage}`,
@@ -80,7 +93,7 @@ export async function writeContext(directory: string,
     await writeFile(join(directory, 'harness', file.path), file.text)
   }
   for (const rollout of options.rollouts) {
-    await writeFile(join(directory, 'rollouts', `${rollout.id.replace(/[^\w.-]/g, '_')}.md`), renderRollout(rollout))
+    await writeFile(join(directory, 'rollouts', `${rollout.id.replace(/[^\w.-]/g, '_')}.md`), rollout.raw ?? renderRollout(rollout))
   }
   if (options.library) {
     await mkdir(join(directory, 'library'), { recursive: true })

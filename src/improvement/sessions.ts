@@ -3,13 +3,29 @@ import { spawn } from 'node:child_process'
 
 /** Runs one headless DSH session that answers one task and exits; the default shells out to `dsh headless`. */
 export interface HeadlessRunner { run(prompt: string, cwd: string): Promise<string> }
+/** Resolves the `dsh` launcher: on Windows the npm wrapper is a `.cmd` that `spawn` may not run, so this prefers the package's real bin.js under node. */
+async function resolveDshCommand(dsh: string): Promise<{ command: string; args: string[] }> {
+  if (dsh !== 'dsh' || process.platform !== 'win32') return { command: dsh, args: [] }
+  const { access } = await import('node:fs/promises')
+  const { join } = await import('node:path')
+  const candidates: string[] = []
+  for (const root of [process.env.APPDATA, process.env.NODE_PATH, process.env.ProgramFiles]) {
+    if (!root) continue
+    candidates.push(join(root, 'npm', 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js'), join(root, 'node_modules', '@deepseek-ai', 'dsh', 'lib', 'bin.js'))
+  }
+  for (const bin of candidates) {
+    if (await access(bin).then(() => true).catch(() => false)) return { command: process.execPath, args: [bin] }
+  }
+  return { command: 'dsh.cmd', args: [] }
+}
 /** A `HeadlessRunner` over the `dsh` CLI; the session gets the workspace as its cwd and its prompt on the command line. */
 export class DshHeadlessRunner implements HeadlessRunner {
   /** @param dsh The `dsh` binary to run; @param timeoutMs Wall-clock limit for one session. */
   constructor(private readonly dsh: string, private readonly timeoutMs: number) {}
   async run(prompt: string, cwd: string): Promise<string> {
+    const { command, args } = await resolveDshCommand(this.dsh)
     return await new Promise<string>((resolve, reject) => {
-      const child = spawn(this.dsh, ['headless', prompt], { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
+      const child = spawn(command, [...args, 'headless', prompt], { cwd, stdio: ['ignore', 'pipe', 'pipe'] })
       let out = '', err = ''
       const timer = setTimeout(() => { child.kill(); reject(new Error(`headless session timed out after ${this.timeoutMs}ms`)) }, this.timeoutMs)
       child.stdout.on('data', chunk => { out += chunk })
@@ -44,8 +60,11 @@ const SURFACE = `The harness you may edit is context/harness/:
   runtime/policy are templates: keep their {placeholders} exactly.
 - skills/<name>.md — loaded on demand when a session reads the skill; name it in lowercase dashes.
 Always-on text (team sections and overrides) rides in every model request; a skill costs nothing until read.
-Prefer, in order: a new skill, a team section, an override. Hard vetoes: empty file, lost {placeholder},
-a skill named feishu, github or dsh-superagent-*, a file outside this tree.`
+Prefer, in order: a new skill, a team section, an override. Paying: every always-on line you add must
+compress or remove an equivalent amount of existing text in the same file, unless it fixes a failure the
+evidence names — a longer harness is a slower agent, and length alone has been measured to hurt. Hard
+vetoes: empty file, lost {placeholder}, a skill named feishu, github or dsh-superagent-*, a file outside
+this tree.`
 /** The proposer's task: read the evidence, edit the harness tree on disk, reply with notes only. */
 export function proposePrompt(options: { lens: 'invariant' | 'domain' }): string {
   const lens = options.lens === 'invariant'

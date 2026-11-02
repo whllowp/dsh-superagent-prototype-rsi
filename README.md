@@ -30,6 +30,7 @@ Read the numbered documents in order; each builds only on the ones before it.
 - [007 Architecture](docs/007-architecture.md)
 - [008 Cookbook](docs/008-cookbook.md): adding a Source
 - [009 RSI](docs/009-rsi.md): the harness that improves itself from its own ended tickets
+- [RSI 进化实录（中文）](docs/RSI-DEMO-zh.md): a real three-round self-improvement run over the desktop-pet plugin
 
 ## Development
 

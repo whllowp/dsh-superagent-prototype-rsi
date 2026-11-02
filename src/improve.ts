@@ -1,5 +1,7 @@
 /** The RSI improver CLI: run one Propose–Probe–Compose recursion over dsh-superagent's own prompt harness. */
 import { parseArgs } from 'node:util'
+import { writeFile } from 'node:fs/promises'
+import { join } from 'node:path'
 import { DshHeadlessRunner } from './improvement/sessions.ts'
 import { Improver, STAGES, type Stage } from './improvement/pipeline.ts'
 
@@ -8,14 +10,33 @@ const usage = `dsh-superagent RSI improver — improve the harness from its own 
 Usage:
   node lib/improve.js run [--url U] [--runs-dir D] [--tag T] [--k N] [--mode parallel|sequential]
                           [--seed N] [--max-tickets N] [--dsh BIN] [--timeout MS]
-                          [--stage ${STAGES.join('|')}] [--mission FILE] [--dry-run]
+                          [--stage ${STAGES.join('|')}] [--mission FILE] [--evidence DIR]
+                          [--behavioural TASKS.json] [--rounds N] [--probe-timeout MS] [--dry-run]
+  node lib/improve.js report [--runs-dir D] [--tag T] [--k N] [--mode M] [--seed N]
   node lib/improve.js library [--runs-dir D] [--tag T]
 
-run       collects the ended tickets as evidence, then proposes, probes, composes and blind-selects
-          candidate harnesses, and saves the winner as a new prompt version (--dry-run writes it beside the run instead).
-library   prints the experience library's index for the tag.`
+run       collects the ended tickets as evidence (or a local --evidence dir of rollout *.md files),
+          then proposes, probes, composes and blind-selects candidate harnesses; with --behavioural,
+          base and candidate are measured on held-out micro-tasks before anything is saved, and a
+          candidate that scores no better is rejected. --dry-run writes what would have been saved.
+report    prints (and writes report.md for) a finished run: the harness diff and probe measurements.
+library   prints the experience library's index for the tag.
+
+The headless sessions need model credentials: set DEEPSEEK_API_KEY in the environment, in a local
+.env file (DEEPSEEK_API_KEY=...), or DEEPSEEK_AUTH_TOKEN is picked up automatically.`
 
 async function main(): Promise<number> {
+  // The beginner path: model credentials often live in a local .env rather than the session environment.
+  try {
+    const raw = await import('node:fs/promises').then(fs => fs.readFile('.env', 'utf8'))
+    for (const line of raw.split('\n')) {
+      const match = line.match(/^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.+)\s*$/)
+      if (match && !process.env[match[1]!]) process.env[match[1]!] = match[2]!.replace(/^["']|["']$/g, '')
+    }
+  } catch { /* no .env, fine */ }
+  if (!process.env.DEEEPSEEK_API_KEY && process.env.DEEEPSEEK_AUTH_TOKEN) {
+    process.env.DEEEPSEEK_API_KEY = process.env.DEEEPSEEK_AUTH_TOKEN
+  }
   const { positionals, values } = parseArgs({
     allowPositionals: true,
     options: {
@@ -30,24 +51,37 @@ async function main(): Promise<number> {
       timeout: { type: 'string', default: '900000' },
       stage: { type: 'string', default: 'all' },
       mission: { type: 'string' },
+      evidence: { type: 'string' },
+      behavioural: { type: 'string' },
+      rounds: { type: 'string', default: '1' },
+      'probe-timeout': { type: 'string', default: '120000' },
       'dry-run': { type: 'boolean', default: false },
       help: { type: 'boolean', default: false },
     },
   })
   const command = positionals[0] ?? 'run'
-  if (values.help || !['run', 'library'].includes(command)) {
+  if (values.help || !['run', 'library', 'report'].includes(command)) {
     console.log(usage)
     return values.help ? 0 : 1
   }
+  // The beginner path: the credentials service stores the key as DEEPSEEK_AUTH_TOKEN in some setups;
+  // the model provider looks for DEEPSEEK_API_KEY in the session environment, so bridge the two.
+  if (!process.env.DEEEPSEEK_API_KEY && process.env.DEEEPSEEK_AUTH_TOKEN) {
+    process.env.DEEEPSEEK_API_KEY = process.env.DEEEPSEEK_AUTH_TOKEN
+  }
+  const k = Math.max(1, Number(values.k) || 1)
+  const mode = values.mode === 'sequential' ? 'sequential' as const : 'parallel' as const
+  const seed = Number(values.seed) || 1
   const options = {
-    url: values.url!, runsDir: values['runs-dir']!, tag: values.tag!,
-    k: Math.max(1, Number(values.k) || 1),
-    mode: values.mode === 'sequential' ? 'sequential' as const : 'parallel' as const,
-    seed: Number(values.seed) || 1,
+    url: values.url!, runsDir: values['runs-dir']!, tag: values.tag!, k, mode, seed,
     maxTickets: Math.max(1, Number(values['max-tickets']) || 30),
     runner: new DshHeadlessRunner(values.dsh!, Number(values.timeout) || 900_000),
     dryRun: values['dry-run']!,
     mission: values.mission ? await import('node:fs/promises').then(fs => fs.readFile(values.mission!, 'utf8')) : undefined,
+    evidenceDir: values.evidence,
+    behavioural: values.behavioural
+      ? { tasksFile: values.behavioural, rounds: Math.max(1, Number(values.rounds) || 1), timeoutMs: Number(values['probe-timeout']) || 120_000 }
+      : undefined,
   }
   const improver = new Improver(options)
   if (command === 'library') {
@@ -55,8 +89,14 @@ async function main(): Promise<number> {
     return 0
   }
   await improver.load()
-  const from = values.stage === 'all' ? 'collect' : STAGES.includes(values.stage as Stage) ? values.stage as Stage : undefined
-  if (!from) {
+  if (command === 'report') {
+    const text = await improver.report()
+    console.log(text)
+    await writeFile(join(improver.directory, 'report.md'), text)
+    return 0
+  }
+  const from = values.stage === 'all' ? undefined : STAGES.includes(values.stage as Stage) ? values.stage as Stage : undefined
+  if (values.stage !== 'all' && from === undefined) {
     console.error(`unknown stage ${values.stage}; choose one of: all, ${STAGES.join(', ')}`)
     return 1
   }

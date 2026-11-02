@@ -10,7 +10,7 @@
 | [design-deep-dive.md](design-deep-dive.md) | 设计思路（注意力原则、五支柱、决策权分离、提示词强度阶梯）/ 处理流程（十阶段流水线 + 授权双路径）/ 知识更新处理（五类知识的版本化与生效路径） | [design-deep-dive.html](design-deep-dive.html) |
 | [prompts-map.md](prompts-map.md) | 提示词全景：装配流水线（两角色）/ 16 个文件逐条规则 / 团队编辑面（14 个可覆盖键）/ 提示词在防什么 | [prompts-map.html](prompts-map.html) |
 
-> 2026-11-02 新增：仓库已加入 RSI 能力（基于 Harness² 方法的线束自我改进循环），设计见 [docs/009-rsi.md](../docs/009-rsi.md)，CLI 为 `node lib/improve.js run --dry-run`。
+> 2026-11-02 新增：仓库已加入 RSI 能力（基于 Harness² 方法的线束自我改进循环），设计见 [docs/009-rsi.md](../docs/009-rsi.md)，CLI 为 `node lib/improve.js run --dry-run`；三轮真实进化实录见 [docs/RSI-DEMO-zh.md](../docs/RSI-DEMO-zh.md)，桌面宠物插件见 [zelda-pet/README.md](../zelda-pet/README.md)。
 
 HTML 版为自包含单文件（内置样式与主题，双击即可在浏览器打开；浅色/深色随系统）。
 

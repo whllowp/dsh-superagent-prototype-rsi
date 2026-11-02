@@ -400,6 +400,7 @@ Some generic modules still refer directly to GitHub or Feishu:
 | `src/improvement/tree.ts` | The harness tree: the prompt configuration as editable files, its validation, diffs and fences |
 | `src/improvement/evidence.ts` | The management-API client, the ended tickets as rollouts, and the context tree a session reads |
 | `src/improvement/sessions.ts` | The headless runner, the discipline prompts of the four session roles, and their reply parsers |
+| `src/improvement/behave.ts` | The behavioural probe: held-out micro-tasks run under base and candidate harnesses, scored by mechanical checkers |
 | `src/improvement/library.ts` | The experience library: adopted harnesses and at most one lesson per adoption |
 | `src/improvement/pipeline.ts` | The `Improver`: collect, propose, probe, compose, select, apply and reflect, with its resumable run state |
 
@@ -439,7 +440,7 @@ Some generic modules still refer directly to GitHub or Feishu:
 | `tests/migration.spec.ts` | The schema 11 migration: every stored record in its current shape, and the refusal of older schemas |
 | `tests/store.spec.ts` | Repositories and their working sets, in SQLite as in memory, the kv area, with every key of `KV` spelled only in `src/kv.ts` and the migration, settings history and queries |
 | `tests/prompts.spec.ts` | Prompt validation, assembly and versions |
-| `tests/improvement.spec.ts` | The RSI improver: tree mechanics, reply parsers, the library, and the pipeline on a fake management API and a fake headless runner |
+| `tests/improvement.spec.ts` | The RSI improver: tree mechanics, reply parsers, the library, the pipeline on a fake management API and a fake headless runner, and the behavioural probe's adoption gate |
 | `tests/cards.spec.ts` | The rules the built-in text must state, file by file |
 | `tests/model-surface.spec.ts` | Everything models read: tools, prompts, skills and inputs, checked against the tool schemas, the execution environment and the glossary, within a size budget per role |
 | `tests/deployment.spec.ts`, `tests/environment.spec.ts`, `tests/index.spec.ts` | The plugin configuration and setup, the agent's process environment, the plugin entry |

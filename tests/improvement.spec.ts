@@ -147,7 +147,10 @@ function fakeApi(options: { base: PromptConfig }) {
     if (route === 'GET prompts') return json({ current: { revision: 0, previousRevision: null, savedAt: '', source: 'defaults', config: options.base }, defaults: options.base })
     if (route === 'GET state') return json({ setup: { machine: { promptMaxChars: 1_000_000 } }, health: {}, load: {} })
     if (route === 'GET tickets') return json({ items: [], next_offset: undefined })
-    if (route === 'POST prompts/preview') return json({ orchestrator: 'x', worker: 'x', parts: {}, skills: {}, scope: '' })
+    if (route === 'POST prompts/preview') {
+      if (typeof body?.communication !== 'string') return new Response(JSON.stringify({ error: 'invalid config' }), { status: 400 })
+      return json({ orchestrator: 'x', worker: 'x', parts: {}, skills: {}, scope: '' })
+    }
     if (route === 'PUT prompts') { saves.push({ config: body!.config as PromptConfig, baseRevision: body!.baseRevision as number }); return json({ revision: saves.length, context_delivery: 'pending' }) }
     throw new Error(`fake API met ${route}`)
   })
@@ -168,7 +171,7 @@ describe('pipeline', () => {
         const runner = fakeRunner()
         const improver = new Improver(improverOptions(directory, runner, { k: 2 }))
         const state = await improver.run()
-        expect(state.done).toEqual(['collect', 'propose', 'compose', 'select', 'apply', 'reflect'])
+        expect(state.done).toEqual(['collect', 'propose', 'compose', 'select', 'behave', 'apply', 'reflect'])
         expect(state.candidates).toHaveLength(4)
         expect(state.finals).toEqual(['final1', 'final2'])
         expect(state.choice).toBeTruthy()
@@ -213,8 +216,7 @@ describe('pipeline', () => {
       } finally { api.unstub() }
     })
   })
-  it('refuses a proposal once with its error, then accepts the fixed one', async () => {
-    await withTemp(async directory => {
+  it('refuses a proposal once with its error, then accepts the fixed one', async () => {    await withTemp(async directory => {
       const api = fakeApi({ base: defaults })
       try {
         let proposes = 0
@@ -236,6 +238,58 @@ describe('pipeline', () => {
         const state = await improver.run('collect', 'select')
         expect(proposes).toBeGreaterThanOrEqual(3)
         expect(state.candidates?.[0]?.inherited).toBeFalsy()
+      } finally { api.unstub() }
+    })
+  })
+  it('reads local evidence files when no instance holds tickets', async () => {
+    await withTemp(async directory => {
+      const api = fakeApi({ base: defaults })
+      try {
+        const evidence = join(directory, 'evidence')
+        await mkdir(evidence, { recursive: true })
+        await writeFile(join(evidence, 't9.md'), '# rollout t9\n[REPORT blocked] could not read the document')
+        const runner = fakeRunner()
+        const improver = new Improver({ ...improverOptions(directory, runner), evidenceDir: evidence })
+        const state = await improver.run('collect', 'propose')
+        expect(state.rollouts).toHaveLength(1)
+        expect(state.rollouts?.[0]?.id).toBe('t9')
+        expect(await readFile(join(improver.directory, 'context', 'rollouts', 't9.md'), 'utf8')).toContain('[REPORT blocked]')
+      } finally { api.unstub() }
+    })
+  })
+  it('rejects adoption when the behavioural probe scores the candidate worse', async () => {
+    await withTemp(async directory => {
+      const api = fakeApi({ base: defaults })
+      try {
+        const base = fakeRunner().run
+        const project = join(directory, 'project')
+        await mkdir(project, { recursive: true })
+        await writeFile(join(project, 'marker-check.js'), 'process.exit(require(\'fs\').existsSync(\'PROBE_MARKER\')?0:1)')
+        const tasks = join(directory, 'tasks.json')
+        // The probe copies this isolated project per run; the checker looks for the marker the fake session writes.
+        await writeFile(tasks, JSON.stringify({ tasks: [{ id: 'marker', instruction: 'write the marker', cwd: project, check: 'node marker-check.js' }] }))
+        // The candidate harness carries the rsi marker, so a candidate-favouring session makes the candidate group pass.
+        const runner = { run: async (prompt: string, cwd: string): Promise<string> => {
+          if (prompt.includes('standing instructions')) {
+            const favours = prompt.includes('[rsi-')
+            if (process.env.PROBE_FAVOURS === 'base' ? !favours : favours) {
+              await writeFile(join(cwd, 'PROBE_MARKER'), 'x')
+            }
+            return 'DONE'
+          }
+          return await base(prompt, cwd)
+        } }
+        const improver = new Improver({ ...improverOptions(directory, runner, { dryRun: false }),
+          behavioural: { tasksFile: tasks, rounds: 1, timeoutMs: 30_000 } })
+        process.env.PROBE_FAVOURS = 'base'
+        try {
+          const state = await improver.run('collect', 'reflect')
+          expect(state.behaviour?.base.passed).toBe(1)
+          expect(state.behaviour?.candidate.passed).toBe(0)
+          expect(state.rejectedByBehaviour).toBe(true)
+          expect(api.saves).toHaveLength(0)
+          expect(state.adoptedRevision).toBeUndefined()
+        } finally { delete process.env.PROBE_FAVOURS }
       } finally { api.unstub() }
     })
   })
