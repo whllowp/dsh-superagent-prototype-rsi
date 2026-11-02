@@ -8,6 +8,7 @@
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/index.d.ts",
+  "bin": { "dsh-superagent-improve": "./lib/improve.js" },
   "exports": {
     ".": {
       "types": "./lib/index.d.ts",
@@ -16,6 +17,7 @@
     "./client": "./lib/client.js",
     "./github-watch": "./lib/github-watch.js",
     "./feishu-watch": "./lib/feishu-watch.js",
+    "./improve": "./lib/improve.js",
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json"
   },
