@@ -3,7 +3,7 @@ import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { PromptConfig } from '../app/prompts.ts'
 import { call, collectEvidence, readRolloutDir, readTree, writeContext, type HarnessHead, type Rollout } from './evidence.ts'
-import { appendEntry, keepAdopted, readIndex, type LibraryEntry } from './library.ts'
+import { appendEntry, appendOutcome, keepAdopted, outcomesMarkdown, readIndex, readOutcomes, type LibraryEntry } from './library.ts'
 import { composePrompt, parseChoice, parseReflection, proposePrompt, reflectPrompt, selectPrompt, type HeadlessRunner } from './sessions.ts'
 import { scoreGroup, type BehaviourScore } from './behave.ts'
 import { configToTree, configWithBases, diffTrees, readFence, treeToConfig, validateTree, type Tree } from './tree.ts'
@@ -97,7 +97,9 @@ export class Improver {
     const rollouts = this.options.evidenceDir ? await readRolloutDir(this.options.evidenceDir) : live.rollouts
     this.state.head = live.head
     this.state.rollouts = rollouts
-    await writeContext(this.dir('context'), { mission: this.mission, head: live.head, rollouts, tree: configToTree(live.head.config), library: this.libraryDir })
+    // The long-term memory rides into the context: the lessons and what earlier runs measured.
+    const outcomesTail = outcomesMarkdown(await readOutcomes(this.libraryDir, 10))
+    await writeContext(this.dir('context'), { mission: this.mission, head: live.head, rollouts, tree: configToTree(live.head.config), library: this.libraryDir, outcomesTail })
   }
   /** propose: two lenses per round (invariant, domain); parallel mode widens with k of each, sequential rounds refine the checkpoint. */
   private async propose(): Promise<void> {
@@ -261,6 +263,19 @@ export class Improver {
     const reply = await this.session(reflectPrompt(), workspace)
     const reflection = parseReflection(reply)
     await writeFile(join(workspace, 'reflection.md'), reply)
+    // The outcome record is the long-term memory: what this run tried and what it measured, kept even on rejection.
+    if (!this.options.dryRun) {
+      const runLabel = `${this.options.mode}${this.options.k}-s${this.options.seed}`
+      const probeText = this.state.behaviour
+        ? { base: `${this.state.behaviour.base.passed}/${this.state.behaviour.base.total} in ${this.state.behaviour.base.seconds.toFixed(1)}s avg`,
+            candidate: `${this.state.behaviour.candidate.passed}/${this.state.behaviour.candidate.total} in ${this.state.behaviour.candidate.seconds.toFixed(1)}s avg` }
+        : undefined
+      await appendOutcome(this.libraryDir, { date: new Date().toISOString().slice(0, 10), run: runLabel,
+        selected: this.state.choice ?? '(none)', adopted: this.state.adoptedRevision !== undefined,
+        ...(this.state.adoptedRevision !== undefined ? { adoptedRevision: this.state.adoptedRevision } : {}),
+        ...(this.state.rejectedByBehaviour ? { rejectedByBehaviour: true } : {}), ...(probeText ? { probe: probeText } : {}),
+        ...(this.state.lesson ? { lesson: this.state.lesson.lesson } : {}) })
+    }
     const lesson = reflection.experience
     if (lesson && !this.options.dryRun) {
       const entry: LibraryEntry = { date: new Date().toISOString().slice(0, 10),

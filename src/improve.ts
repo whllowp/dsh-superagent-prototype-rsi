@@ -4,6 +4,7 @@ import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DshHeadlessRunner } from './improvement/sessions.ts'
 import { Improver, STAGES, type Stage } from './improvement/pipeline.ts'
+import { publishKnowledge } from './improvement/publish.ts'
 
 const usage = `dsh-superagent RSI improver — improve the harness from its own ended tickets.
 
@@ -14,6 +15,7 @@ Usage:
                           [--behavioural TASKS.json] [--rounds N] [--probe-timeout MS] [--dry-run]
   node lib/improve.js report [--runs-dir D] [--tag T] [--k N] [--mode M] [--seed N]
   node lib/improve.js library [--runs-dir D] [--tag T]
+  node lib/improve.js publish [--url U] [--runs-dir D] [--tag T] [--skill-name NAME] [--max-skill N]
 
 run       collects the ended tickets as evidence (or a local --evidence dir of rollout *.md files),
           then proposes, probes, composes and blind-selects candidate harnesses; with --behavioural,
@@ -21,6 +23,9 @@ run       collects the ended tickets as evidence (or a local --evidence dir of r
           candidate that scores no better is rejected. --dry-run writes what would have been saved.
 report    prints (and writes report.md for) a finished run: the harness diff and probe measurements.
 library   prints the experience library's index for the tag.
+publish   sediments the knowledge base into the live deployment as a team skill named
+          deployment-knowledge: every session can then load the accumulated lessons and measured
+          outcomes on demand. Saved as a new prompt version, reversible from the panel.
 
 The headless sessions need model credentials: set DEEPSEEK_API_KEY in the environment, in a local
 .env file (DEEPSEEK_API_KEY=...), or DEEPSEEK_AUTH_TOKEN is picked up automatically.`
@@ -55,12 +60,14 @@ async function main(): Promise<number> {
       behavioural: { type: 'string' },
       rounds: { type: 'string', default: '1' },
       'probe-timeout': { type: 'string', default: '120000' },
+      'skill-name': { type: 'string', default: 'deployment-knowledge' },
+      'max-skill': { type: 'string', default: '8000' },
       'dry-run': { type: 'boolean', default: false },
       help: { type: 'boolean', default: false },
     },
   })
   const command = positionals[0] ?? 'run'
-  if (values.help || !['run', 'library', 'report'].includes(command)) {
+  if (values.help || !['run', 'library', 'report', 'publish'].includes(command)) {
     console.log(usage)
     return values.help ? 0 : 1
   }
@@ -86,6 +93,12 @@ async function main(): Promise<number> {
   const improver = new Improver(options)
   if (command === 'library') {
     console.log(await improver.library())
+    return 0
+  }
+  if (command === 'publish') {
+    const result = await publishKnowledge({ url: options.url, libraryDir: join(options.runsDir, 'library', options.tag),
+      skillName: values['skill-name'], maxChars: Number(values['max-skill']) || 8_000 })
+    console.log(`published '${values['skill-name']}' into prompt revision ${result.revision} (${result.skillChars} chars, ${result.lessons} lessons, ${result.outcomes} outcomes)`)
     return 0
   }
   await improver.load()

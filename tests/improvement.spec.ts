@@ -6,7 +6,8 @@ import { join } from 'node:path'
 import { builtInParts, defaultPrompts } from '../src/app/prompts.ts'
 import { configToTree, configWithBases, diffTrees, readFence, treeToConfig, validateTree } from '../src/improvement/tree.ts'
 import { parseChoice, parseReflection, proposePrompt, reflectPrompt } from '../src/improvement/sessions.ts'
-import { appendEntry, keepAdopted, readIndex } from '../src/improvement/library.ts'
+import { appendEntry, appendOutcome, keepAdopted, outcomesMarkdown, readIndex, readOutcomes } from '../src/improvement/library.ts'
+import { knowledgeSkillText, publishKnowledge } from '../src/improvement/publish.ts'
 import { renderRollout, toRollout } from '../src/improvement/evidence.ts'
 import { Improver } from '../src/improvement/pipeline.ts'
 import type { PromptConfig } from '../src/app/prompts.ts'
@@ -103,6 +104,34 @@ describe('library', () => {
       expect(index).toContain('- lesson: l2')
       await keepAdopted(directory, 'parallel2-s1', [{ path: 'team/scope.md', text: 'scope' }])
       expect(await readFile(join(directory, 'harnesses', 'parallel2-s1', 'team', 'scope.md'), 'utf8')).toBe('scope')
+    })
+  })
+  it('sediments run outcomes as long-term memory, kept even on rejection', async () => {
+    await withTemp(async directory => {
+      await appendOutcome(directory, { date: '2026-11-02', run: 'parallel1-s7', selected: 'final1', adopted: false, rejectedByBehaviour: true, probe: { base: '3/3', candidate: '3/3' } })
+      await appendOutcome(directory, { date: '2026-11-03', run: 'parallel1-s8', selected: 'final1', adopted: true, adoptedRevision: 4 })
+      expect(await readOutcomes(directory, 10)).toHaveLength(2)
+      expect((await readOutcomes(directory, 1))[0]?.adoptedRevision).toBe(4)
+      const markdown = outcomesMarkdown(await readOutcomes(directory, 10))
+      expect(markdown).toContain('rejected by the behavioural probe')
+      expect(markdown).toContain('ADOPTED as revision 4')
+    })
+  })
+  it('publishes the knowledge base as a team skill alongside existing skills', async () => {
+    await withTemp(async directory => {
+      const api = fakeApi({ base: { ...defaults, skills: { identities: 'existing skill' } } })
+      try {
+        await appendEntry(directory, { date: '2026-11-02', run: 'parallel1-s7', cue: 'c', lesson: 'prefer skills over always-on text', evidence: 'e', confidence: 'high' })
+        await appendOutcome(directory, { date: '2026-11-02', run: 'parallel1-s7', selected: 'final1', adopted: false, rejectedByBehaviour: true, probe: { base: '4/4 in 76.5s avg', candidate: '4/4 in 73.3s avg' } })
+        const result = await publishKnowledge({ url: 'http://127.0.0.1:39999', libraryDir: directory, maxChars: 8000 })
+        expect(result.lessons).toBe(1)
+        expect(result.outcomes).toBe(1)
+        expect(api.saves).toHaveLength(1)
+        const saved = api.saves[0]!.config.skills ?? {}
+        expect(saved.identities).toBe('existing skill')
+        expect(saved['deployment-knowledge']).toContain('prefer skills over always-on text')
+        expect(saved['deployment-knowledge']).toContain('rejected by the behavioural probe')
+      } finally { api.unstub() }
     })
   })
 })
@@ -289,6 +318,10 @@ describe('pipeline', () => {
           expect(state.rejectedByBehaviour).toBe(true)
           expect(api.saves).toHaveLength(0)
           expect(state.adoptedRevision).toBeUndefined()
+          const outcomes = await readOutcomes(join(directory, 'library', 'test'), 10)
+          expect(outcomes).toHaveLength(1)
+          expect(outcomes[0]?.rejectedByBehaviour).toBe(true)
+          expect(outcomes[0]?.probe?.candidate).toContain('0/1')
         } finally { delete process.env.PROBE_FAVOURS }
       } finally { api.unstub() }
     })

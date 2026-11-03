@@ -83,9 +83,9 @@ export function renderRollout(rollout: Rollout): string {
     ...rollout.reports.map(report => `[REPORT ${report.state}${report.at ? ` at ${report.at}` : ''}] ${report.summary}`),
   ].filter(line => line !== '').join('\n')
 }
-/** Writes the evidence context tree a session reads: mission, the harness to edit, rollouts, and the experience library index. */
+/** Writes the evidence context tree a session reads: mission, the harness to edit, rollouts, and the library's long-term memory. */
 export async function writeContext(directory: string,
-  options: { mission: string; head: HarnessHead; rollouts: Rollout[]; tree: { path: string; text: string }[]; library?: string }): Promise<void> {
+  options: { mission: string; head: HarnessHead; rollouts: Rollout[]; tree: { path: string; text: string }[]; library?: string; outcomesTail?: string }): Promise<void> {
   await mkdir(join(directory, 'rollouts'), { recursive: true })
   await writeFile(join(directory, 'task.md'), options.mission)
   for (const file of options.tree) {
@@ -95,12 +95,13 @@ export async function writeContext(directory: string,
   for (const rollout of options.rollouts) {
     await writeFile(join(directory, 'rollouts', `${rollout.id.replace(/[^\w.-]/g, '_')}.md`), rollout.raw ?? renderRollout(rollout))
   }
+  await mkdir(join(directory, 'library'), { recursive: true })
   if (options.library) {
-    await mkdir(join(directory, 'library'), { recursive: true })
     await copyFile(join(options.library, 'INDEX.md'), join(directory, 'library', 'INDEX.md')).catch(() => writeFile(join(directory, 'library', 'INDEX.md'), '(empty library)\n'))
   } else {
-    await mkdir(join(directory, 'library'), { recursive: true })
+    await writeFile(join(directory, 'library', 'INDEX.md'), '(empty library)\n')
   }
+  await writeFile(join(directory, 'library', 'OUTCOMES.md'), options.outcomesTail ?? '(no earlier runs)\n')
 }
 /** Reads back the harness tree a session edited in its workspace, walking each group's nested override keys. */
 export async function readTree(directory: string): Promise<{ path: string; text: string }[]> {

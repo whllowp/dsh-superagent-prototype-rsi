@@ -51,6 +51,15 @@ node lib/improve.js report --runs-dir runs/demo --tag demo
 
 **双轨收尾**：自动闸门的三连否决说明候选没有可测量的性能优势——但候选修复的"静态核对假 ready"失败模式在 rollout 证据里有独立于速度的质量价值。于是走人工审阅路径（这正是面板 Prompts 页的用途）：`scripts/rsi-demo/adopt-final1.mjs` 经 `PUT prompts` 把候选存为**提示词版本 1**（面板可查历史、一键回滚）。总结：**自动闸门守质量底线，人工审阅做最终决定权**。
 
+## 沉淀：长期记忆与知识库
+
+第三轮结束后，强制重跑 reflect 阶段做真实沉淀，两份记录写进知识库（`runs/demo/library/demo/`）：
+
+- **outcomes.jsonl**：`{"run":"parallel1-s7","adopted":false,"rejectedByBehaviour":true,"probe":{"base":"4/4 in 76.5s avg","candidate":"4/4 in 73.3s avg"}}`——**否决也沉淀**：下次提案者的上下文会带着这条记录，不会重复提议已被测量否决的候选；
+- **lessons.jsonl：空——而且这是系统在正确工作**。reflector 写下了教科书级的 `NO_ENTRY`："所有行都是 confounded：三条 rollout 是 base 执行、从未运行过这些编辑；唯一的候选执行 4/4 与 base 相同、无逐组件归因依据。诱人的 lesson——'本地验收必须观测到验收命令运行'——会把修复归因于从未被执行测试过的文本，而且它还需要先补一次执行。" 宁缺毋滥：编造的归因会毒化之后每个任务的库。
+
+最后 `node lib/improve.js publish` 把知识库发布为团队技能 `deployment-knowledge`，存为**提示词版本 2**——super agent 的每个会话从此可以按需加载这份记忆（当前 1 条测量结果、0 条教训；教训只在有测量证据支撑时才会出现）。
+
 ### 三轮总账
 
 | 轮 | 策略变化 | 探针数据 | 结果 |
