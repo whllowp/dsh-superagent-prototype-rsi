@@ -1,0 +1,6 @@
+# The bundle layer: the improver is CLI-only, so the host entry is a no-op whose only job is to make the
+# composed tree carry the bundle (visible in the plugin manager). Install it beside dsh-superagent so the
+# packaged prompts resolve: see README.md.
+- insert:
+    - id: dsh-superagent-improver
+      name: dsh-superagent-improver

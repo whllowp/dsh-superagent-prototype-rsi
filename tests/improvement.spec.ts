@@ -8,6 +8,7 @@ import { configToTree, configWithBases, diffTrees, readFence, treeToConfig, vali
 import { parseChoice, parseReflection, proposePrompt, reflectPrompt } from '../src/improvement/sessions.ts'
 import { appendEntry, appendOutcome, keepAdopted, outcomesMarkdown, readIndex, readOutcomes } from '../src/improvement/library.ts'
 import { knowledgeSkillText, publishKnowledge } from '../src/improvement/publish.ts'
+import { publisher, publishers, registerPublisher } from '../src/improvement/publishers.ts'
 import { renderRollout, toRollout } from '../src/improvement/evidence.ts'
 import { Improver } from '../src/improvement/pipeline.ts'
 import type { PromptConfig } from '../src/app/prompts.ts'
@@ -132,6 +133,24 @@ describe('library', () => {
         expect(saved['deployment-knowledge']).toContain('prefer skills over always-on text')
         expect(saved['deployment-knowledge']).toContain('rejected by the behavioural probe')
       } finally { api.unstub() }
+    })
+  })
+  it('exposes publishers as a pluggable registry with two built-ins', async () => {
+    const names = publishers().map(p => p.name)
+    expect(names).toContain('prompt-skill')
+    expect(names).toContain('file')
+    expect(publisher('file')).toBeTruthy()
+    expect(() => registerPublisher({ name: 'file', description: 'x', publish: async () => ({ target: 'x' }) })).toThrow(/already registered/)
+    expect(publisher('does-not-exist')).toBeUndefined()
+  })
+  it('the file publisher sediments beside the library without touching the deployment', async () => {
+    await withTemp(async directory => {
+      await appendOutcome(directory, { date: '2026-11-03', run: 'parallel1-s7', selected: 'final1', adopted: false, rejectedByBehaviour: true, probe: { base: '4/4', candidate: '4/4' } })
+      const result = await publisher('file')!.publish({ url: 'http://127.0.0.1:39999', libraryDir: directory })
+      expect(result.target).toContain('published')
+      const text = await readFile(join(directory, 'published', 'deployment-knowledge.md'), 'utf8')
+      expect(text).toContain('rejected by the behavioural probe')
+      expect(text).toContain('probe 4/4 vs 4/4')
     })
   })
 })

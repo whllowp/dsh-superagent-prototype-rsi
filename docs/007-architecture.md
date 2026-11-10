@@ -401,8 +401,10 @@ Some generic modules still refer directly to GitHub or Feishu:
 | `src/improvement/evidence.ts` | The management-API client, the ended tickets as rollouts, and the context tree a session reads |
 | `src/improvement/sessions.ts` | The headless runner, the discipline prompts of the four session roles, and their reply parsers |
 | `src/improvement/behave.ts` | The behavioural probe: held-out micro-tasks run under base and candidate harnesses, scored by mechanical checkers |
-| `src/improvement/library.ts` | The experience library: adopted harnesses and at most one lesson per adoption |
-| `src/improvement/pipeline.ts` | The `Improver`: collect, propose, probe, compose, select, apply and reflect, with its resumable run state |
+| `src/improvement/library.ts` | The experience library: adopted harnesses, per-run outcome records, and at most one lesson per adoption |
+| `src/improvement/publishers.ts` | The publisher protocol: pluggable sedimentation targets (`prompt-skill` into the live prompts, `file` beside the library), registered by name |
+| `src/improvement/cli.ts` | The improver CLI commands (`run` / `report` / `library` / `publish`), shared by both entry bundles |
+| `src/improvement/pipeline.ts` | The `Improver`: collect, propose, probe, compose, select, behave, apply and reflect, with its resumable run state |
 
 `src/sources/github.ts` and `src/sources/feishu.ts` are also the entries of the two Source plugins, built by `tsdown.config.ts` and exported in `package.json` as `./github-watch` and `./feishu-watch`. The bundle's `cordis.patch.yml` inserts the three plugins, with Feishu disabled.
 
