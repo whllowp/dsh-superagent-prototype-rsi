@@ -403,7 +403,12 @@ Some generic modules still refer directly to GitHub or Feishu:
 | `src/improvement/behave.ts` | The behavioural probe: held-out micro-tasks run under base and candidate harnesses, scored by mechanical checkers |
 | `src/improvement/library.ts` | The experience library: adopted harnesses, per-run outcome records, and at most one lesson per adoption |
 | `src/improvement/publishers.ts` | The publisher protocol: pluggable sedimentation targets (`prompt-skill` into the live prompts, `file` beside the library), registered by name |
-| `src/improvement/cli.ts` | The improver CLI commands (`run` / `report` / `library` / `publish`), shared by both entry bundles |
+| `src/improvement/cli.ts` | The improver CLI commands (`run` / `report` / `library` / `publish` / `router`), shared by both entry bundles |
+| `src/improvement/args.ts` | A small argv parser used instead of util.parseArgs, which ignores its options on some Node builds |
+| `src/router/parallel.ts` | The Router's parallel arm: plan a request, dispatch subtasks to agent sessions concurrently, merge the replies |
+| `src/router/verify.ts` | The Router's verification arm: measure held-out tasks under several stored prompt revisions |
+| `src/router/switch.ts` | The Router's switch arm: save any stored revision as the live prompt version |
+| `src/router/cli.ts` + `main.ts` | The Router CLI (`run` / `verify` / `switch`), shipped as `dsh-router` in both bundles |
 | `src/improvement/pipeline.ts` | The `Improver`: collect, propose, probe, compose, select, behave, apply and reflect, with its resumable run state |
 
 `src/sources/github.ts` and `src/sources/feishu.ts` are also the entries of the two Source plugins, built by `tsdown.config.ts` and exported in `package.json` as `./github-watch` and `./feishu-watch`. The bundle's `cordis.patch.yml` inserts the three plugins, with Feishu disabled.

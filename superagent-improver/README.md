@@ -22,6 +22,9 @@ node lib/improver.js report --runs-dir runs --tag my --k 1 --seed 7
 node lib/improver.js publish --publisher prompt-skill --runs-dir runs --tag my   # 沉淀进运行实例
 node lib/improver.js publish --publisher file --runs-dir runs --tag my           # 只落盘，不碰实例
 node lib/improver.js library --runs-dir runs --tag my
+node lib/router.js run --task "..." --plan plan.json --cwd 项目目录 --agents 2   # Router：并行指挥多个 Agent
+node lib/router.js verify --tasks tasks.json --revisions 0,2                    # Router：新旧版本验证对比
+node lib/router.js switch --revision 2                                          # Router：一键切换版本（可回滚）
 ```
 
 ## 插件化的三个层次

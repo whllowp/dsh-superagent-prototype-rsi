@@ -5,7 +5,7 @@
   "description": "Optional dsh-superagent companion plugin: the RSI improver (Propose–Probe–Compose over the prompt harness) as a standalone CLI. Talks to the deployment only through its management API; install alongside dsh-superagent so the packaged prompts resolve.",
   "type": "module",
   "main": "lib/host.js",
-  "bin": { "dsh-improver": "./lib/improver.js" },
+  "bin": { "dsh-improver": "./lib/improver.js", "dsh-router": "./lib/router.js" },
   "exports": { ".": "./lib/host.js", "./package.json": "./package.json" },
   "dsh": {
     "bundle": { "patch": "./cordis.patch.yml" },

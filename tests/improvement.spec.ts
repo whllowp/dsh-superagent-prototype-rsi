@@ -11,6 +11,9 @@ import { knowledgeSkillText, publishKnowledge } from '../src/improvement/publish
 import { publisher, publishers, registerPublisher } from '../src/improvement/publishers.ts'
 import { renderRollout, toRollout } from '../src/improvement/evidence.ts'
 import { Improver } from '../src/improvement/pipeline.ts'
+import { verifyRevisions, verifyTable } from '../src/router/verify.ts'
+import { switchToRevision } from '../src/router/switch.ts'
+import { dispatchParallel } from '../src/router/parallel.ts'
 import type { PromptConfig } from '../src/app/prompts.ts'
 
 const defaults = defaultPrompts()
@@ -155,6 +158,82 @@ describe('library', () => {
   })
 })
 
+describe('router', () => {
+  it('dispatches parallel agents from a plan and merges their replies', async () => {
+    await withTemp(async directory => {
+      const project = join(directory, 'project')
+      await mkdir(project, { recursive: true })
+      const plan = join(directory, 'plan.json')
+      await writeFile(plan, JSON.stringify({ tasks: [
+        { id: 'a', instruction: 'write marker A' },
+        { id: 'b', instruction: 'write marker B' },
+      ] }))
+      const replies: string[] = []
+      const runner = { run: async (prompt: string, cwd: string): Promise<string> => {
+        if (prompt.includes('one of several agents')) {
+          const marker = prompt.includes('marker A') ? 'A' : 'B'
+          await writeFile(join(cwd, `marker-${marker}.txt`), marker)
+          return `done ${marker}`
+        }
+        if (prompt.includes("router's merger")) return 'merged final report'
+        throw new Error('unknown prompt')
+      } }
+      const result = await dispatchParallel({ request: 'do A and B', planFile: plan, cwd: project,
+        outDir: join(directory, 'out'), concurrency: 2, runner, timeoutMs: 30_000, merge: true })
+      expect(result.runs).toHaveLength(2)
+      expect(result.runs.every(run => !run.failed)).toBe(true)
+      expect(result.merged).toBe('merged final report')
+      expect(await readFile(join(result.runs[0]!.workspace, 'marker-A.txt'), 'utf8')).toBe('A')
+      expect(await readFile(join(directory, 'out', 'report.md'), 'utf8')).toContain('merged final report')
+      expect(replies.length).toBe(0)
+    })
+  })
+  it('verifies stored revisions and names the best one', async () => {
+    await withTemp(async directory => {
+      const api = fakeApi({ base: defaults, stored: { 0: defaults, 2: { ...defaults, delivery: defaults.delivery + '\nPROBE_MARKER rule' } } })
+      try {
+        const project = join(directory, 'project')
+        await mkdir(project, { recursive: true })
+        await writeFile(join(project, 'marker-check.js'), 'process.exit(require(\'fs\').existsSync(\'PROBE_MARKER\')?0:1)')
+        const tasks = join(directory, 'tasks.json')
+        await writeFile(tasks, JSON.stringify({ tasks: [{ id: 'marker', instruction: 'write the marker', cwd: project, check: 'node marker-check.js' }] }))
+        const runner = { run: async (prompt: string, cwd: string): Promise<string> => {
+          if (prompt.includes('standing instructions') && prompt.includes('PROBE_MARKER rule')) await writeFile(join(cwd, 'PROBE_MARKER'), 'x')
+          return 'DONE'
+        } }
+        const { scores, best } = await verifyRevisions({ url: 'http://127.0.0.1:39999', revisions: [0, 2], tasksFile: tasks,
+          rounds: 1, timeoutMs: 30_000, runner, root: join(directory, 'arbiter') })
+        expect(scores.map(s => s.revision)).toEqual([0, 2])
+        expect(scores[0]!.passed).toBe(0)
+        expect(scores[1]!.passed).toBe(1)
+        expect(best).toBe(2)
+        expect(verifyTable(scores, best)).toContain('← best')
+      } finally { api.unstub() }
+    })
+  })
+  it('switches the live deployment to a stored revision and no-ops on the live one', async () => {
+    await withTemp(async directory => {
+      void directory
+      const rule = '\nnew rule'
+      const stored = { 0: defaults, 2: { ...defaults, delivery: defaults.delivery + rule } }
+      const api = fakeApi({ base: defaults, stored })
+      try {
+        const first = await switchToRevision({ url: 'http://127.0.0.1:39999', revision: 2 })
+        expect(first.switched).toBe(true)
+        expect(api.saves).toHaveLength(1)
+        expect(api.saves[0]!.baseRevision).toBe(0)
+        expect(api.saves[0]!.config.delivery).toContain('new rule')
+        const repeat = await switchToRevision({ url: 'http://127.0.0.1:39999', revision: 2 })
+        expect(repeat.switched).toBe(true) // the fake now reports live revision 1, so 2 is still a change
+        expect(api.saves).toHaveLength(2)
+        const same = await switchToRevision({ url: 'http://127.0.0.1:39999', revision: 2 })
+        expect(same.switched).toBe(false) // live is revision 2 now: switching to 2 is a no-op
+        expect(api.saves).toHaveLength(2)
+      } finally { api.unstub() }
+    })
+  })
+})
+
 /** A headless runner that plays the four session roles against a workspace, editing files the way a model would. */
 function fakeRunner(): { run: (prompt: string, cwd: string) => Promise<string>; proposeCalls: () => number } {
   let proposes = 0
@@ -185,21 +264,38 @@ function fakeRunner(): { run: (prompt: string, cwd: string) => Promise<string>; 
 }
 
 /** Installs a fake management API: the prompts of revision 0, an empty ended list, and a recorder for saves. */
-function fakeApi(options: { base: PromptConfig }) {
+function fakeApi(options: { base: PromptConfig; stored?: Record<number, PromptConfig> }) {
   const saves: { config: PromptConfig; baseRevision: number }[] = []
-  const fetchFake = vi.fn(async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+  const live = { revision: 0, config: options.base }
+  const fetchFake = vi.fn(async (input: string | URL, init?: RequestInit): Promise<Response> => {
     const url = new URL(String(input))
     const route = `${init?.method ?? 'GET'} ${url.pathname.replace(/^.*\/orchestrator\/api\//, '')}`
     const body = init?.body ? JSON.parse(String(init.body)) as Record<string, unknown> : undefined
     const json = (value: unknown): Response => new Response(JSON.stringify(value), { headers: { 'content-type': 'application/json' } })
-    if (route === 'GET prompts') return json({ current: { revision: 0, previousRevision: null, savedAt: '', source: 'defaults', config: options.base }, defaults: options.base })
+    if (route === 'GET prompts') {
+      const revision = url.searchParams.get('revision')
+      if (revision !== null) {
+        const n = Number(revision)
+        const stored = options.stored && Object.hasOwn(options.stored, n) ? options.stored[n]! : undefined
+        if (stored) return json({ current: { revision: n, previousRevision: null, savedAt: '', source: 'test', config: stored }, defaults: options.base })
+        if (n === live.revision) return json({ current: { revision: n, previousRevision: null, savedAt: '', source: 'test', config: live.config }, defaults: options.base })
+        return new Response(JSON.stringify({ error: `unknown revision ${n}` }), { status: 400 })
+      }
+      return json({ current: { revision: live.revision, previousRevision: null, savedAt: '', source: 'test', config: live.config }, defaults: options.base })
+    }
     if (route === 'GET state') return json({ setup: { machine: { promptMaxChars: 1_000_000 } }, health: {}, load: {} })
     if (route === 'GET tickets') return json({ items: [], next_offset: undefined })
     if (route === 'POST prompts/preview') {
       if (typeof body?.communication !== 'string') return new Response(JSON.stringify({ error: 'invalid config' }), { status: 400 })
       return json({ orchestrator: 'x', worker: 'x', parts: {}, skills: {}, scope: '' })
     }
-    if (route === 'PUT prompts') { saves.push({ config: body!.config as PromptConfig, baseRevision: body!.baseRevision as number }); return json({ revision: saves.length, context_delivery: 'pending' }) }
+    if (route === 'PUT prompts') {
+      const config = body!.config as PromptConfig
+      saves.push({ config, baseRevision: body!.baseRevision as number })
+      live.revision = saves.length
+      live.config = config
+      return json({ revision: live.revision, context_delivery: 'pending' })
+    }
     throw new Error(`fake API met ${route}`)
   })
   vi.stubGlobal('fetch', fetchFake)

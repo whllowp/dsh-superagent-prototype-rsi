@@ -1,10 +1,11 @@
 /** The RSI improver CLI: run one Propose–Probe–Compose recursion over dsh-superagent's own prompt harness. */
-import { parseArgs } from 'node:util'
 import { writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { DshHeadlessRunner } from './sessions.ts'
 import { Improver, STAGES, type Stage } from './pipeline.ts'
 import { publisher, publishers } from './publishers.ts'
+import { runRouterCli } from '../router/cli.ts'
+import { miniParse } from './args.ts'
 
 const usage = `dsh-superagent RSI improver — improve the harness from its own ended tickets.
 
@@ -16,6 +17,7 @@ Usage:
   node lib/improve.js report [--runs-dir D] [--tag T] [--k N] [--mode M] [--seed N]
   node lib/improve.js library [--runs-dir D] [--tag T]
   node lib/improve.js publish [--url U] [--runs-dir D] [--tag T] [--publisher NAME] [--skill-name NAME] [--max-skill N]
+  node lib/improve.js router run|verify|switch [...]    # the separated super-agent router (dsh-router)
 
 run       collects the ended tickets as evidence (or a local --evidence dir of rollout *.md files),
           then proposes, probes, composes and blind-selects candidate harnesses; with --behavioural,
@@ -30,8 +32,8 @@ publish   sediments the knowledge base through one of the registered publishers
 The headless sessions need model credentials: set DEEPSEEK_API_KEY in the environment, in a local
 .env file (DEEPSEEK_API_KEY=...), or DEEPSEEK_AUTH_TOKEN is picked up automatically.`
 
-/** The whole CLI; `argv` defaults to process.argv.slice(2) through parseArgs. */
-export async function runCli(argv?: string[]): Promise<number> {
+/** The whole CLI; `argv` is the token list after the program name (process.argv.slice(2)). */
+export async function runCli(argv: string[]): Promise<number> {
   // The beginner path: model credentials often live in a local .env rather than the session environment.
   try {
     const raw = await import('node:fs/promises').then(fs => fs.readFile('.env', 'utf8'))
@@ -43,33 +45,30 @@ export async function runCli(argv?: string[]): Promise<number> {
   if (!process.env.DEEEPSEEK_API_KEY && process.env.DEEEPSEEK_AUTH_TOKEN) {
     process.env.DEEEPSEEK_API_KEY = process.env.DEEEPSEEK_AUTH_TOKEN
   }
-  const { positionals, values } = parseArgs({
-    argv,
-    allowPositionals: true,
-    options: {
-      url: { type: 'string', default: process.env.DSH_SUPERAGENT_URL ?? 'http://127.0.0.1:3082' },
-      'runs-dir': { type: 'string', default: 'runs' },
-      tag: { type: 'string', default: 'default' },
-      k: { type: 'string', default: '1' },
-      mode: { type: 'string', default: 'parallel' },
-      seed: { type: 'string', default: '1' },
-      'max-tickets': { type: 'string', default: '30' },
-      dsh: { type: 'string', default: process.env.DSH_SUPERAGENT_DSH ?? 'dsh' },
-      timeout: { type: 'string', default: '900000' },
-      stage: { type: 'string', default: 'all' },
-      mission: { type: 'string' },
-      evidence: { type: 'string' },
-      behavioural: { type: 'string' },
-      rounds: { type: 'string', default: '1' },
-      'probe-timeout': { type: 'string', default: '120000' },
-      publisher: { type: 'string', default: 'prompt-skill' },
-      'skill-name': { type: 'string', default: 'deployment-knowledge' },
-      'max-skill': { type: 'string', default: '8000' },
-      'dry-run': { type: 'boolean', default: false },
-      help: { type: 'boolean', default: false },
-    },
-  })
+  const { positionals, values } = miniParse(argv, {
+    url: { type: 'string', default: process.env.DSH_SUPERAGENT_URL ?? 'http://127.0.0.1:3082' },
+    'runs-dir': { type: 'string', default: 'runs' },
+    tag: { type: 'string', default: 'default' },
+    k: { type: 'string', default: '1' },
+    mode: { type: 'string', default: 'parallel' },
+    seed: { type: 'string', default: '1' },
+    'max-tickets': { type: 'string', default: '30' },
+    dsh: { type: 'string', default: process.env.DSH_SUPERAGENT_DSH ?? 'dsh' },
+    timeout: { type: 'string', default: '900000' },
+    stage: { type: 'string', default: 'all' },
+    mission: { type: 'string' },
+    evidence: { type: 'string' },
+    behavioural: { type: 'string' },
+    rounds: { type: 'string', default: '1' },
+    'probe-timeout': { type: 'string', default: '120000' },
+    publisher: { type: 'string', default: 'prompt-skill' },
+    'skill-name': { type: 'string', default: 'deployment-knowledge' },
+    'max-skill': { type: 'string', default: '8000' },
+    'dry-run': { type: 'boolean', default: false },
+    help: { type: 'boolean', default: false },
+  }, { allowPositionals: true })
   const command = positionals[0] ?? 'run'
+  if (command === 'router') return runRouterCli(positionals.slice(1))
   if (values.help || !['run', 'library', 'report', 'publish'].includes(command)) {
     console.log(usage)
     return values.help ? 0 : 1
