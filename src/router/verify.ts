@@ -22,7 +22,7 @@ export async function verifyRevisions(options: {
   runner: HeadlessRunner; root: string
 }): Promise<{ scores: (BehaviourScore & { revision: number })[]; best: number | null }> {
   const { readTasks } = await import('../improvement/behave.ts')
-  const tasks = await readTasks(options.tasksFile)
+  const { tasks } = await readTasks(options.tasksFile)
   const scores: (BehaviourScore & { revision: number })[] = []
   for (const revision of options.revisions) {
     const stored = await revisionConfig(options.url, revision)

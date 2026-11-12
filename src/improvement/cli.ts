@@ -13,7 +13,8 @@ Usage:
   node lib/improve.js run [--url U] [--runs-dir D] [--tag T] [--k N] [--mode parallel|sequential]
                           [--seed N] [--max-tickets N] [--dsh BIN] [--timeout MS]
                           [--stage ${STAGES.join('|')}] [--mission FILE] [--evidence DIR]
-                          [--behavioural TASKS.json] [--rounds N] [--probe-timeout MS] [--dry-run]
+                          [--behavioural TASKS.json] [--rounds N] [--probe-timeout MS] [--probe-top N]
+                          [--lambda X] [--predictor NAME] [--dry-run]
   node lib/improve.js report [--runs-dir D] [--tag T] [--k N] [--mode M] [--seed N]
   node lib/improve.js library [--runs-dir D] [--tag T]
   node lib/improve.js publish [--url U] [--runs-dir D] [--tag T] [--publisher NAME] [--skill-name NAME] [--max-skill N]
@@ -60,8 +61,11 @@ export async function runCli(argv: string[]): Promise<number> {
     evidence: { type: 'string' },
     behavioural: { type: 'string' },
     rounds: { type: 'string', default: '1' },
-    'probe-timeout': { type: 'string', default: '120000' },
-    publisher: { type: 'string', default: 'prompt-skill' },
+      'probe-timeout': { type: 'string', default: '120000' },
+      'probe-top': { type: 'string', default: '1' },
+      lambda: { type: 'string', default: '0.5' },
+      predictor: { type: 'string', default: 'heuristic' },
+      publisher: { type: 'string', default: 'prompt-skill' },
     'skill-name': { type: 'string', default: 'deployment-knowledge' },
     'max-skill': { type: 'string', default: '8000' },
     'dry-run': { type: 'boolean', default: false },
@@ -91,6 +95,9 @@ export async function runCli(argv: string[]): Promise<number> {
     behavioural: values.behavioural
       ? { tasksFile: values.behavioural, rounds: Math.max(1, Number(values.rounds) || 1), timeoutMs: Number(values['probe-timeout']) || 120_000 }
       : undefined,
+    probeTop: Math.max(1, Number(values['probe-top']) || 1),
+    lambda: Number(values.lambda) || 0.5,
+    predictorName: values.predictor,
   }
   const improver = new Improver(options)
   if (command === 'library') {

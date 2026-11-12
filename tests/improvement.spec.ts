@@ -6,9 +6,10 @@ import { join } from 'node:path'
 import { builtInParts, defaultPrompts } from '../src/app/prompts.ts'
 import { configToTree, configWithBases, diffTrees, readFence, treeToConfig, validateTree } from '../src/improvement/tree.ts'
 import { parseChoice, parseReflection, proposePrompt, reflectPrompt } from '../src/improvement/sessions.ts'
-import { appendEntry, appendOutcome, keepAdopted, outcomesMarkdown, readIndex, readOutcomes } from '../src/improvement/library.ts'
+import { appendEntry, appendOutcome, appendPrediction, keepAdopted, outcomesMarkdown, readIndex, readOutcomes } from '../src/improvement/library.ts'
 import { knowledgeSkillText, publishKnowledge } from '../src/improvement/publish.ts'
 import { publisher, publishers, registerPublisher } from '../src/improvement/publishers.ts'
+import { penalized, predictor as predictorByName, registerPredictor } from '../src/improvement/predictor.ts'
 import { renderRollout, toRollout } from '../src/improvement/evidence.ts'
 import { Improver } from '../src/improvement/pipeline.ts'
 import { verifyRevisions, verifyTable } from '../src/router/verify.ts'
@@ -155,6 +156,36 @@ describe('library', () => {
       expect(text).toContain('rejected by the behavioural probe')
       expect(text).toContain('probe 4/4 vs 4/4')
     })
+  })
+})
+
+describe('predictor', () => {
+  const base: { path: string; text: string }[] = [
+    { path: 'team/communication.md', text: defaults.communication },
+    { path: 'team/scope.md', text: defaults.scope },
+    { path: 'team/delivery.md', text: defaults.delivery },
+  ]
+  const heuristic = predictorByName('heuristic')!
+  it('is registered as the default and refuses duplicate names', () => {
+    expect(heuristic.name).toBe('heuristic')
+    expect(() => registerPredictor(heuristic)).toThrow(/already registered/)
+  })
+  it('penalizes always-on growth and rewards skills and named moments', () => {
+    const grown = heuristic.predict({ base, candidate: [
+      ...base, { path: 'team/delivery.md', text: defaults.delivery + 'x'.repeat(400) }] })
+    expect(grown.score).toBeLessThan(50)
+    const skilled = heuristic.predict({ base, candidate: [
+      ...base, { path: 'skills/local-ui-handoff.md', text: 'A checklist.' }], notes: 'moments: rollouts/t1.md, rollouts/t2.md' })
+    expect(skilled.score).toBeGreaterThan(50)
+    expect(skilled.reasons.join(' ')).toContain('rollout moments')
+    expect(penalized(skilled.score, skilled.uncertainty, 0.5)).toBeLessThanOrEqual(skilled.score)
+  })
+  it('penalizes restatement and missing notes with uncertainty', () => {
+    const restated = heuristic.predict({ base, candidate: [
+      ...base, { path: 'team/delivery.md', text: defaults.delivery + '\n' + defaults.communication.split('\n')[0] }] })
+    expect(restated.reasons.join(' ')).toContain('restates')
+    const silent = heuristic.predict({ base, candidate: [...base, { path: 'team/scope.md', text: defaults.scope + '\nmore' }] })
+    expect(silent.uncertainty).toBeGreaterThan(0.3)
   })
 })
 
@@ -315,12 +346,13 @@ describe('pipeline', () => {
         const runner = fakeRunner()
         const improver = new Improver(improverOptions(directory, runner, { k: 2 }))
         const state = await improver.run()
-        expect(state.done).toEqual(['collect', 'propose', 'compose', 'select', 'behave', 'apply', 'reflect'])
+        expect(state.done).toEqual(['collect', 'propose', 'compose', 'select', 'behave', 'apply', 'audit', 'reflect'])
         expect(state.candidates).toHaveLength(4)
         expect(state.finals).toEqual(['final1', 'final2'])
         expect(state.choice).toBeTruthy()
         expect(state.adoptedRevision).toBeUndefined()
         expect(api.saves).toHaveLength(0)
+        expect(state.predictions?.filter(p => p.kind === 'candidate')).toHaveLength(4)
         const dry = JSON.parse(await readFile(join(improver.directory, 'adopted', 'dry-run.json'), 'utf8')) as { wouldSave: PromptConfig; baseRevision: number }
         expect(dry.baseRevision).toBe(0)
         expect(dry.wouldSave.communication).toContain('[rsi-')
@@ -338,6 +370,7 @@ describe('pipeline', () => {
         expect(api.saves).toHaveLength(1)
         expect(api.saves[0]!.baseRevision).toBe(0)
         expect(state.adoptedRevision).toBe(1)
+        expect(state.predictions?.filter(p => p.kind === 'candidate')).toHaveLength(2)
         expect(state.lesson?.cue).toContain('blocked')
         const index = await improver.library()
         expect(index).toContain('extend team/communication')
@@ -433,10 +466,14 @@ describe('pipeline', () => {
           expect(state.rejectedByBehaviour).toBe(true)
           expect(api.saves).toHaveLength(0)
           expect(state.adoptedRevision).toBeUndefined()
+          expect(state.finalRanking?.map(r => r.label)).toEqual(['final1'])
+          expect(state.predictedBest).toBe('final1')
+          expect(state.observedBest).toBe('final1')
           const outcomes = await readOutcomes(join(directory, 'library', 'test'), 10)
           expect(outcomes).toHaveLength(1)
           expect(outcomes[0]?.rejectedByBehaviour).toBe(true)
           expect(outcomes[0]?.probe?.candidate).toContain('0/1')
+          expect(outcomes[0]?.predictedBest).toBe('final1')
         } finally { delete process.env.PROBE_FAVOURS }
       } finally { api.unstub() }
     })

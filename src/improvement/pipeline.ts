@@ -3,13 +3,14 @@ import { cp, mkdir, readFile, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { PromptConfig } from '../app/prompts.ts'
 import { call, collectEvidence, readRolloutDir, readTree, writeContext, type HarnessHead, type Rollout } from './evidence.ts'
-import { appendEntry, appendOutcome, keepAdopted, outcomesMarkdown, readIndex, readOutcomes, type LibraryEntry } from './library.ts'
+import { appendEntry, appendOutcome, appendPrediction, keepAdopted, outcomesMarkdown, readIndex, readOutcomes, type LibraryEntry } from './library.ts'
 import { composePrompt, parseChoice, parseReflection, proposePrompt, reflectPrompt, selectPrompt, type HeadlessRunner } from './sessions.ts'
 import { scoreGroup, type BehaviourScore } from './behave.ts'
+import { defaultPredictorName, penalized, predictor as predictorByName } from './predictor.ts'
 import { configToTree, configWithBases, diffTrees, readFence, treeToConfig, validateTree, type Tree } from './tree.ts'
 
 /** The stages of a run, in execution order; `run` resumes at any one of them. */
-export const STAGES = ['collect', 'propose', 'compose', 'select', 'behave', 'apply', 'reflect'] as const
+export const STAGES = ['collect', 'propose', 'compose', 'select', 'behave', 'apply', 'audit', 'reflect'] as const
 export type Stage = typeof STAGES[number]
 /** The knobs of one run; every field has a default the CLI passes through. */
 export interface ImproverOptions {
@@ -17,8 +18,14 @@ export interface ImproverOptions {
   maxTickets: number; runner: HeadlessRunner; dryRun: boolean; mission?: string
   /** A local evidence directory of rollout `*.md` files; set when no instance holds the tickets. */
   evidenceDir?: string
-  /** The behavioural probe: held-out micro-tasks run under base and candidate, scoring each group. */
+  /** The behavioural probe: held-out micro-tasks run under base and candidate harnesses, scoring each group. */
   behavioural?: { tasksFile: string; rounds: number; timeoutMs: number }
+  /** RSI-Anything rationing: only the top-ranked finals receive the expensive behavioural probe. */
+  probeTop?: number
+  /** Uncertainty penalty weight for the predictor's ranking value. */
+  lambda?: number
+  /** Which registered predictor ranks the candidates. */
+  predictorName?: string
 }
 /** A proposed candidate: its workspace on disk and the notes it replied with; its tree is read back when needed. */
 interface Candidate { label: string; lens: 'invariant' | 'domain'; workspace: string; notes?: string; inherited?: boolean }
@@ -31,6 +38,13 @@ export interface RunState {
   evidenceDir?: string
   behaviour?: { base: BehaviourScore; candidate: BehaviourScore; candidateBetter: boolean }
   rejectedByBehaviour?: boolean
+  /** RSI-Anything bookkeeping: predictions logged per candidate/final, the ranked finals, and what actually measured best. */
+  predictions?: { kind: 'candidate' | 'final'; label: string; score: number; uncertainty: number; penalized: number }[]
+  finalNotes?: Record<string, string>
+  finalRanking?: { label: string; score: number; penalized: number }[]
+  predictedBest?: string
+  observedBest?: string
+  audit?: BehaviourScore
 }
 /** The default mission: improve how the agents work on this deployment, on evidence from ended tickets. */
 const MISSION = `This deployment runs a proactive coding agent whose standing text — the harness — decides how its
@@ -118,6 +132,28 @@ export class Improver {
       if (this.options.mode === 'sequential') await this.composeRound(round, candidates)
     }
     this.state.candidates = candidates.map(({ label, lens, notes, inherited }) => ({ label, lens, notes, inherited }))
+    // RSI-Anything bookkeeping: predict every landed candidate and log it version-attributed.
+    const active = this.predictor()
+    const baseTree = configToTree(this.head().config)
+    const predictions: NonNullable<RunState['predictions']> = []
+    for (const candidate of candidates) {
+      if (candidate.inherited) continue
+      const tree = await readTree(join(candidate.workspace, 'context', 'harness'))
+      const prediction = active.predict({ base: baseTree, candidate: tree, notes: candidate.notes })
+      const value = { kind: 'candidate' as const, label: candidate.label, score: prediction.score,
+        uncertainty: prediction.uncertainty, penalized: Math.round(penalized(prediction.score, prediction.uncertainty, this.options.lambda ?? 0.5)) }
+      predictions.push(value)
+      if (!this.options.dryRun) await appendPrediction(this.libraryDir, { date: new Date().toISOString().slice(0, 10),
+        run: `${this.options.mode}${this.options.k}-s${this.options.seed}`, generatorRevision: this.head().revision, ...value })
+    }
+    this.state.predictions = predictions
+  }
+  /** The registered predictor this run ranks with. */
+  private predictor() {
+    const name = this.options.predictorName ?? defaultPredictorName
+    const active = predictorByName(name)
+    if (!active) throw new Error(`unknown predictor ${name}; registered: ${predictorByName(defaultPredictorName) ? defaultPredictorName : '(none)'}`)
+    return active
   }
   /** One session with a single retry — a crashed or timed-out session is treated like a refused proposal. */
   private async session(prompt: string, workspace: string): Promise<string> {
@@ -167,7 +203,12 @@ export class Improver {
     for (let index = 1; index <= this.options.k; index++) {
       const label = `final${index}`
       const workspace = await this.poolWorkspace(this.dir('finals', label), candidates)
-      await this.session(composePrompt(), workspace)
+      const reply = await this.session(composePrompt(), workspace)
+      const notes = readFence(reply, 'notes')
+      if (notes) {
+        this.state.finalNotes = { ...this.state.finalNotes, [label]: notes }
+        await writeFile(join(workspace, 'notes.md'), notes)
+      }
       const probed = await this.probe(workspace)
       if (typeof probed === 'string') throw new Error(`composer ${label} produced no valid harness: ${probed}`)
       finals.push(label)
@@ -179,7 +220,9 @@ export class Improver {
     const workspace = this.dir('checkpoint')
     // Later rounds compose over the previous checkpoint, so their workspace must keep its harness.
     await this.poolWorkspace(workspace, candidates, { seed: round === 1 })
-    await this.session(composePrompt(), workspace)
+    const reply = await this.session(composePrompt(), workspace)
+    const notes = readFence(reply, 'notes')
+    if (notes) await writeFile(join(workspace, 'notes.md'), notes)
     const probed = await this.probe(workspace)
     if (typeof probed === 'string' && probed !== 'unchanged') throw new Error(`round ${round} composed an invalid harness: ${probed}`)
   }
@@ -214,28 +257,54 @@ export class Improver {
     await mkdir(workspace, { recursive: true })
     await writeFile(join(workspace, 'decision.md'), `selected: ${choice} -> ${this.state.choice}\n${readFence(reply, 'why') ?? ''}`)
   }
-  /** behave: the strategy upgrade — measure base and candidate on held-out micro-tasks before anything is saved. */
+  /** behave: the retention gate — rank the finals by prediction, probe only the top ones against the base, keep the measured best. */
   private async behave(): Promise<void> {
     const probe = this.options.behavioural
     if (!probe) return
     const { readTasks } = await import('./behave.ts')
-    const tasks = await readTasks(probe.tasksFile)
+    const { tasks } = await readTasks(probe.tasksFile)
     const head = this.head()
-    const chosen = await this.chosenConfig()
+    const baseTree = configToTree(head.config)
+    const active = this.predictor()
+    // RSI-Anything rationing: predictions rank the finals; only the top --probe-top earn real execution time.
+    const ranking: NonNullable<RunState['finalRanking']> = []
+    for (const label of this.state.finals ?? []) {
+      const source = label === 'checkpoint' ? this.dir('checkpoint') : this.dir('finals', label)
+      const tree = await readTree(join(source, 'context', 'harness'))
+      const prediction = active.predict({ base: baseTree, candidate: tree, notes: this.state.finalNotes?.[label] })
+      ranking.push({ label, score: prediction.score, penalized: Math.round(penalized(prediction.score, prediction.uncertainty, this.options.lambda ?? 0.5)) })
+    }
+    ranking.sort((a, b) => b.penalized - a.penalized)
+    this.state.finalRanking = ranking
+    this.state.predictedBest = ranking[0]?.label ?? ''
+    const probed = ranking.slice(0, Math.max(1, this.options.probeTop ?? 1))
     const root = this.dir('behaviour')
     await mkdir(root, { recursive: true })
     const base = await scoreGroup({ group: 'base', sections: head.config, tasks, rounds: probe.rounds, runner: this.options.runner, root, timeoutMs: probe.timeoutMs })
-    const candidate = await scoreGroup({ group: 'candidate', sections: chosen, tasks, rounds: probe.rounds, runner: this.options.runner, root, timeoutMs: probe.timeoutMs })
+    let candidate: BehaviourScore | undefined
+    let observedBest: string | undefined
+    for (const ranked of probed) {
+      const sections = await this.configAt(ranked.label)
+      const score = await scoreGroup({ group: `final-${ranked.label}`, sections, tasks, rounds: probe.rounds,
+        runner: this.options.runner, root, timeoutMs: probe.timeoutMs })
+      if (!candidate || score.passed > candidate.passed || (score.passed === candidate.passed && score.seconds < candidate.seconds)) {
+        candidate = score
+        observedBest = ranked.label
+      }
+    }
+    if (!candidate) throw new Error('the behavioural probe ran but no final was probed')
     // Timing noise on a tie is not an improvement: the candidate must win pass-rate, or finish ≥10% faster.
     const candidateBetter = candidate.passed > base.passed
       || (candidate.passed === base.passed && candidate.seconds < base.seconds * 0.9)
     this.state.behaviour = { base, candidate, candidateBetter }
-    await writeFile(join(root, 'metrics.json'), JSON.stringify(this.state.behaviour, null, 2))
+    this.state.observedBest = observedBest
+    await writeFile(join(root, 'metrics.json'), JSON.stringify({ ...this.state.behaviour, ranked: this.state.finalRanking, predictedBest: this.state.predictedBest, observedBest }, null, 2))
   }
-  /** apply: save the chosen harness as a new prompt version, unless the behavioural probe voted it down. */
+  /** apply: save the measured-best harness as a new prompt version, unless the behavioural probe voted it down. */
   private async apply(): Promise<void> {
-    if (!this.state.choice) throw new Error('nothing was selected; run the earlier stages first')
-    const config = await this.draftConfig()
+    const adoptedFrom = this.state.behaviour ? this.state.observedBest : this.state.choice
+    if (!adoptedFrom) throw new Error('nothing was selected; run the earlier stages first')
+    const config = await this.configAt(adoptedFrom)
     const head = this.head()
     await mkdir(this.dir('adopted'), { recursive: true })
     if (this.state.behaviour && !this.state.behaviour.candidateBetter) {
@@ -251,6 +320,18 @@ export class Improver {
     const result = await call(this.options.url, 'PUT prompts', { body: { config, baseRevision: head.revision } }) as { revision: number }
     this.state.adoptedRevision = result.revision
     await writeFile(this.dir('adopted', 'config.json'), JSON.stringify({ revision: result.revision, config }, null, 2))
+  }
+  /** audit: the held-out audit split — measured once against the adopted harness, gate-informing but never adoption-deciding. */
+  private async audit(): Promise<void> {
+    const probe = this.options.behavioural
+    if (!probe || this.state.rejectedByBehaviour) return
+    const { readTasks } = await import('./behave.ts')
+    const { audit } = await readTasks(probe.tasksFile)
+    if (!audit.length) return
+    const sections = await this.adoptedSections()
+    this.state.audit = await scoreGroup({ group: 'audit', sections, tasks: audit, rounds: 1,
+      runner: this.options.runner, root: this.dir('audit'), timeoutMs: probe.timeoutMs })
+    await writeFile(this.dir('audit', 'metrics.json'), JSON.stringify(this.state.audit, null, 2))
   }
   /** reflect: attribute the adoption and keep at most one evidence-supported lesson in the library. */
   private async reflect(): Promise<void> {
@@ -274,7 +355,26 @@ export class Improver {
         selected: this.state.choice ?? '(none)', adopted: this.state.adoptedRevision !== undefined,
         ...(this.state.adoptedRevision !== undefined ? { adoptedRevision: this.state.adoptedRevision } : {}),
         ...(this.state.rejectedByBehaviour ? { rejectedByBehaviour: true } : {}), ...(probeText ? { probe: probeText } : {}),
+        ...(this.state.predictedBest ? { predictedBest: this.state.predictedBest } : {}),
+        ...(this.state.observedBest ? { observedBest: this.state.observedBest } : {}),
         ...(this.state.lesson ? { lesson: this.state.lesson.lesson } : {}) })
+      // RSI-Anything adaptation trigger: when the predictor's best finals missed the measured best twice in a row
+      // (with probe coverage), the ranking model needs recalibration — sediment that as a knowledge entry.
+      const recent = await readOutcomes(this.libraryDir, 4)
+      const judged = recent.filter(record => record.predictedBest && record.observedBest && record.probe)
+      if (judged.length >= 2) {
+        const lastTwo = judged.slice(-2)
+        const unreliable = lastTwo.every(record => record.predictedBest !== record.observedBest)
+        if (unreliable && !this.state.lesson) {
+          const entry: LibraryEntry = { date: new Date().toISOString().slice(0, 10), run: runLabel,
+            cue: 'the predictor keeps missing the measured-best harness across runs',
+            lesson: 'recalibrate the heuristic predictor: tighten the growth penalty (--lambda), reward rollout-moment naming, or veto its over-weighted signals',
+            evidence: `${lastTwo.length} consecutive runs where predictedBest != observedBest (outcomes.jsonl)`,
+            confidence: 'low — automatic recalibration trigger, verify the runs before trusting' }
+          await appendEntry(this.libraryDir, entry)
+          this.state.lesson = entry
+        }
+      }
     }
     const lesson = reflection.experience
     if (lesson && !this.options.dryRun) {
@@ -283,9 +383,9 @@ export class Improver {
       await appendEntry(this.libraryDir, entry)
       this.state.lesson = entry
     }
-    if (this.state.choice && !this.options.dryRun && !this.state.rejectedByBehaviour) {
-      const source = this.state.choice === 'checkpoint' ? this.dir('checkpoint') : this.dir('finals', this.state.choice)
-      await keepAdopted(this.libraryDir, `${this.state.mode}${this.state.k}-s${this.state.seed}`, await readTree(join(source, 'context', 'harness')))
+    const adoptedFrom = this.adoptedLabel()
+    if (adoptedFrom && !this.options.dryRun && !this.state.rejectedByBehaviour) {
+      await keepAdopted(this.libraryDir, `${this.state.mode}${this.state.k}-s${this.state.seed}`, await readTree(join(this.labelDir(adoptedFrom), 'context', 'harness')))
     }
   }
   /** The candidates of a finished propose stage: labels and workspaces; trees are read back on demand. */
@@ -299,39 +399,59 @@ export class Improver {
     return this.state.head
   }
   private candidateConfig(tree: Tree): PromptConfig { return configWithBases(treeToConfig(tree), this.head().defaults) }
-  /** The composed configuration the run would save right now: the selected final, or the base when behaviour rejected it. */
+  /** The directory a final (or the sequential checkpoint) lives in, by its label. */
+  private labelDir(label: string): string { return label === 'checkpoint' ? this.dir('checkpoint') : this.dir('finals', label) }
+  /** The configuration a label's harness compiles to. */
+  private async configAt(label: string): Promise<PromptConfig> {
+    return this.candidateConfig(await readTree(join(this.labelDir(label), 'context', 'harness')))
+  }
+  /** The label the run adopts: the measured-best final when the probe ran, otherwise the blind selection's pick. */
+  private adoptedLabel(): string | undefined {
+    return this.state.behaviour ? this.state.observedBest : this.state.choice
+  }
+  /** The composed configuration the run would save right now: the measured-best final, or the base when behaviour rejected it. */
   async draftConfig(): Promise<PromptConfig> {
     if (this.state.rejectedByBehaviour) return this.head().config
-    if (!this.state.choice) throw new Error('nothing selected yet')
-    const source = this.state.choice === 'checkpoint' ? this.dir('checkpoint') : this.dir('finals', this.state.choice)
-    return this.candidateConfig(await readTree(join(source, 'context', 'harness')))
+    const label = this.adoptedLabel()
+    if (!label) throw new Error('nothing selected yet')
+    return await this.configAt(label)
   }
-  /** The configuration the selection chose, whether or not behaviour later rejected it. */
-  private async chosenConfig(): Promise<PromptConfig> {
-    if (!this.state.choice) throw new Error('nothing selected yet')
-    const source = this.state.choice === 'checkpoint' ? this.dir('checkpoint') : this.dir('finals', this.state.choice)
-    return this.candidateConfig(await readTree(join(source, 'context', 'harness')))
+  /** The configuration the run adopts, whether or not behaviour later rejected it (the base then). */
+  private async adoptedSections(): Promise<PromptConfig> {
+    if (this.state.rejectedByBehaviour || !this.adoptedLabel()) return this.head().config
+    return await this.configAt(this.adoptedLabel()!)
   }
-  /** Builds the run report: what changed in the harness, and what the behavioural probe measured. */
+  /** Builds the run report: predictions and ranking, what changed in the harness, probe and audit measurements. */
   async report(): Promise<string> {
     const head = this.head()
     const lines: string[] = [`# RSI run report — ${this.options.mode}${this.options.k} seed ${this.options.seed}`, '',
       `stages done: ${this.state.done.join(', ')}`, `evidence rollouts: ${this.state.rollouts?.length ?? 0}`, '']
+    if (this.state.predictions?.length) {
+      lines.push('## Predictions (heuristic world model, uncertainty-penalized)', '',
+        '| kind | label | score | uncertainty | penalized |', '|---|---|---|---|---|',
+        ...this.state.predictions.map(p => `| ${p.kind} | ${p.label} | ${p.score} | ${p.uncertainty} | ${p.penalized} |`), '')
+    }
     if (this.state.behaviour) {
       const { base, candidate, candidateBetter } = this.state.behaviour
-      lines.push('## Behavioural probe (held-out micro-tasks)', '',
+      lines.push('## Behavioural gate (held-out micro-tasks)', '',
         '| group | passed | avg seconds |', '|---|---|---|',
         `| base | ${base.passed}/${base.total} | ${base.seconds.toFixed(1)} |`,
-        `| candidate | ${candidate.passed}/${candidate.total} | ${candidate.seconds.toFixed(1)} |`, '',
+        `| candidate (${this.state.observedBest ?? 'selected'}) | ${candidate.passed}/${candidate.total} | ${candidate.seconds.toFixed(1)} |`, '',
         `verdict: ${candidateBetter ? 'candidate measured better' : 'no measured improvement'}`, '')
+      if (this.state.audit) {
+        const audit = this.state.audit
+        lines.push(`## Held-out audit (${audit.passed}/${audit.total} passed, ${audit.seconds.toFixed(1)}s avg)`, '')
+      }
     }
     if (this.state.rejectedByBehaviour) lines.push('adoption: **rejected** — the probe found no improvement, the base harness stays.', '')
     else if (this.state.adoptedRevision !== undefined) lines.push(`adoption: saved as prompt revision **${this.state.adoptedRevision}** (base revision ${head.revision}).`, '')
     else if (this.options.dryRun) lines.push('adoption: dry run — nothing was saved; see `adopted/dry-run.json`.', '')
     try {
-      const config = await this.chosenConfig()
+      const label = this.adoptedLabel()
+      if (!label) throw new Error('no label')
+      const config = await this.configAt(label)
       const diff = diffTrees(configToTree(head.config), configToTree(config))
-      lines.push('## Harness diff (base → selected)', '', '```diff', diff || '(no changes)', '```', '')
+      lines.push('## Harness diff (base → adopted)', '', '```diff', diff || '(no changes)', '```', '')
     } catch { /* the selection stage has not produced a final yet */ }
     if (this.state.lesson) lines.push('## Experience lesson', '', `- cue: ${this.state.lesson.cue}`, `- lesson: ${this.state.lesson.lesson}`,
       `- evidence: ${this.state.lesson.evidence}`, `- confidence: ${this.state.lesson.confidence}`, '')

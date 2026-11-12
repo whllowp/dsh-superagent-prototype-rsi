@@ -9,6 +9,9 @@ export interface OutcomeRecord {
   date: string; run: string; selected: string; adopted: boolean; adoptedRevision?: number; rejectedByBehaviour?: boolean
   probe?: { base: string; candidate: string }
   lesson?: string
+  /** RSI-Anything attribution: which final the predictor ranked best, and which one actually measured best. */
+  predictedBest?: string
+  observedBest?: string
 }
 /** Reads the library index; a fresh library reads as an empty note. */
 export async function readIndex(libraryDir: string): Promise<string> {
@@ -31,6 +34,17 @@ export async function appendOutcome(libraryDir: string, record: OutcomeRecord): 
 /** Reads the most recent `limit` outcome records, oldest first. */
 export async function readOutcomes(libraryDir: string, limit = 10): Promise<OutcomeRecord[]> {
   return await readJsonl<OutcomeRecord>(join(libraryDir, 'outcomes.jsonl'), limit)
+}
+/** One logged prediction: what the predictor scored, version-attributed, before any real probe ran. */
+export interface PredictionRecord { date: string; run: string; kind: 'candidate' | 'final'; label: string
+  score: number; uncertainty: number; penalized: number; generatorRevision?: number }
+/** Appends one prediction to the (prediction, observation, version) log. */
+export async function appendPrediction(libraryDir: string, record: PredictionRecord): Promise<void> {
+  await appendLine(join(libraryDir, 'predictions.jsonl'), record)
+}
+/** Reads the most recent `limit` predictions, oldest first. */
+export async function readPredictions(libraryDir: string, limit = 50): Promise<PredictionRecord[]> {
+  return await readJsonl<PredictionRecord>(join(libraryDir, 'predictions.jsonl'), limit)
 }
 /** Reads the most recent `limit` lesson records, oldest first. */
 export async function readLessons(libraryDir: string, limit = 30): Promise<LibraryEntry[]> {

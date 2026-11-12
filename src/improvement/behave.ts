@@ -12,14 +12,17 @@ export interface BehaviourScore {
   group: string; passed: number; total: number; seconds: number
   runs: { task: string; round: number; ok: boolean; seconds: number; sessionSeconds: number; checker: string }[]
 }
-/** A task set file: held-out micro-tasks the probe may use, kept away from the proposer's evidence. */
-export async function readTasks(file: string): Promise<ProbeTask[]> {
-  const parsed = JSON.parse(await readFile(file, 'utf8')) as { tasks?: ProbeTask[] }
-  if (!parsed.tasks?.length) throw new Error(`${file} holds no tasks`)
-  for (const task of parsed.tasks) {
+/** A task-set file: held-out gate tasks the probe uses, plus an optional reserved audit split. */
+export interface TaskSet { tasks: ProbeTask[]; audit: ProbeTask[] }
+/** Reads a task set; the `audit` array is the reserved split the retention gate never trains or selects on. */
+export async function readTasks(file: string): Promise<TaskSet> {
+  const parsed = JSON.parse(await readFile(file, 'utf8')) as { tasks?: ProbeTask[]; audit?: ProbeTask[] }
+  const tasks = parsed.tasks ?? []
+  if (!tasks.length) throw new Error(`${file} holds no tasks`)
+  for (const task of [...tasks, ...(parsed.audit ?? [])]) {
     if (!task.id || !task.instruction || !task.cwd || !task.check) throw new Error(`task ${task.id ?? '?'} needs id, instruction, cwd and check`)
   }
-  return parsed.tasks
+  return { tasks, audit: parsed.audit ?? [] }
 }
 /** Runs one shell command in a directory; resolves with its exit code and wall-clock seconds. */
 export function shell(command: string, cwd: string, timeoutMs: number): Promise<{ code: number; seconds: number }> {

@@ -24,5 +24,13 @@
       "cwd": "E:/coding/deepseek-super-agent/dsh-superagent-prototype-rsi/zelda-pet",
       "check": "node probe/check-glow.cjs"
     }
+  ],
+  "audit": [
+    {
+      "id": "breath",
+      "instruction": "给宠物加呼吸感：待机时宠物身体以 3.2s 周期轻微缩放。要求：CSS keyframes 必须命名为 zpet-breath（scale 在 1 与 1.03 之间），并应用在 .zpet-body 的 idle 态动画列表里。不要改动其他行为。",
+      "cwd": "E:/coding/deepseek-super-agent/dsh-superagent-prototype-rsi/zelda-pet",
+      "check": "node probe/check-breath.cjs"
+    }
   ]
 }
